@@ -2,47 +2,51 @@
 
 ## Etap 1 — fundament i uruchomienie
 
-- poprawna struktura repozytorium
-- PostgreSQL i migracje Prisma
-- logowanie administratora
-- automatyczna konfiguracja lokalna
-- bezpieczny build Vercel
-- CI: typecheck, lint, testy
+- [x] poprawna struktura repozytorium
+- [x] PostgreSQL i migracje Prisma
+- [x] logowanie administratora
+- [x] automatyczna konfiguracja lokalna
+- [x] CI: typecheck, lint, testy i build
 
 ## Etap 2 — kompletne zarządzanie danymi
 
-- ligi i sezony
-- drużyny i składy ligowe
-- sędziowie
-- mecze i wszystkie statystyki home/away
-- walidacja i ochrona przed duplikatami
-- historia zmian oraz ręczne nadpisania
+- [x] ligi i sezony
+- [x] drużyny i składy ligowe
+- [x] sędziowie
+- [x] mecze i wszystkie statystyki home/away
+- [x] walidacja i ochrona przed duplikatami
+- [x] historia zmian oraz ręczne nadpisania
+- [ ] zbiorcza edycja rekordów
 
 ## Etap 3 — import
 
-- CSV
-- XLSX
-- podgląd przed importem
-- mapowanie kolumn
-- wykrywanie błędów, braków i duplikatów
-- raport po imporcie
-- adaptery API niezależne od konkretnego dostawcy
+- [x] CSV
+- [x] podgląd przed importem
+- [x] rozpoznawanie popularnych nagłówków Football-Data
+- [x] wykrywanie błędów, braków i duplikatów
+- [x] raport po imporcie
+- [ ] XLSX
+- [ ] ręczne mapowanie niestandardowych kolumn
+- [ ] adaptery API niezależne od dostawcy
 
 ## Etap 4 — analityka bukmacherska
 
-- średnie ogółem, dom, wyjazd
-- forma z ostatnich 5/10 spotkań
-- statystyki for/against
-- linie over/under dla każdej kategorii
-- porównanie drużyn przed meczem
-- profile sędziów
-- własne linie użytkownika
+- [x] średnie ogółem, dom, wyjazd
+- [x] forma z ostatnich 5/10/20 spotkań
+- [x] statystyki for/against
+- [x] podstawowe porównanie drużyn przed meczem
+- [x] profile sędziów
+- [ ] linie over/under dla każdej kategorii
+- [ ] procent trafień linii
+- [ ] własne linie użytkownika
+- [ ] zaawansowane H2H i filtry rywala
 
 ## Etap 5 — produkt końcowy
 
-- eksport CSV/XLSX
-- PWA i dopracowany mobile UX
-- role użytkowników
-- monitoring błędów i kopie bazy
-- testy integracyjne i end-to-end
-- wydajne zapytania oraz indeksy
+- [ ] eksport CSV/XLSX
+- [ ] wdrożenie online
+- [ ] PWA i dopracowany mobile UX
+- [ ] role użytkowników i konta komercyjne
+- [ ] monitoring błędów i kopie bazy
+- [ ] testy integracyjne i end-to-end
+- [ ] płatności i plany subskrypcyjne

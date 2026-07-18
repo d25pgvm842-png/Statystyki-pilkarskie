@@ -107,3 +107,45 @@ export async function toggleLeagueAction(formData: FormData) {
   await prisma.league.update({ where: { id }, data: { active: !active } });
   revalidatePath("/settings");
 }
+
+export async function setActiveSeasonAction(formData: FormData) {
+  await requireAdmin();
+  const id = text(formData, "id");
+  const season = await prisma.season.findUnique({ where: { id }, select: { leagueId: true } });
+  if (!season) throw new Error("Sezon nie istnieje.");
+
+  await prisma.$transaction([
+    prisma.season.updateMany({ where: { leagueId: season.leagueId }, data: { active: false } }),
+    prisma.season.update({ where: { id }, data: { active: true } }),
+  ]);
+
+  revalidatePath("/");
+  revalidatePath("/settings");
+  revalidatePath("/matches");
+  revalidatePath("/teams");
+  revalidatePath("/referees");
+  revalidatePath("/comparison");
+  revalidatePath("/imports");
+}
+
+export async function toggleTeamAction(formData: FormData) {
+  await requireAdmin();
+  const id = text(formData, "id");
+  const active = text(formData, "active") === "true";
+  await prisma.team.update({ where: { id }, data: { active: !active } });
+  revalidatePath("/");
+  revalidatePath("/settings");
+  revalidatePath("/teams");
+  revalidatePath("/matches");
+}
+
+export async function toggleRefereeAction(formData: FormData) {
+  await requireAdmin();
+  const id = text(formData, "id");
+  const active = text(formData, "active") === "true";
+  await prisma.referee.update({ where: { id }, data: { active: !active } });
+  revalidatePath("/settings");
+  revalidatePath("/referees");
+  revalidatePath("/matches");
+}
+

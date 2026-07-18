@@ -24,10 +24,22 @@ function slugify(value: string) {
 async function main() {
   const email = (process.env.ADMIN_EMAIL ?? "admin@example.com").toLowerCase();
   const password = process.env.ADMIN_PASSWORD ?? "zmien-mnie";
+  const passwordHash = await hash(password, 12);
   await prisma.user.upsert({
     where: { email },
-    update: { active: true },
-    create: { email, name: "Administrator", passwordHash: await hash(password, 12), role: UserRole.ADMIN },
+    update: {
+      name: "Administrator",
+      passwordHash,
+      role: UserRole.ADMIN,
+      active: true,
+    },
+    create: {
+      email,
+      name: "Administrator",
+      passwordHash,
+      role: UserRole.ADMIN,
+      active: true,
+    },
   });
 
   const manual = await prisma.dataSource.upsert({

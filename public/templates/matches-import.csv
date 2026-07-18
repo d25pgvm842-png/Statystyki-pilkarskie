@@ -1,0 +1,2 @@
+round;kickoff_at;home_team;away_team;home_score;away_score;status;referee;home_corners;away_corners;home_yellow_cards;away_yellow_cards;home_red_cards;away_red_cards;home_shots_on_target;away_shots_on_target;home_shots;away_shots;home_fouls;away_fouls;home_offsides;away_offsides;note
+1;2026-08-01T18:00:00+02:00;Legia Warszawa;Lech Poznań;2;1;FINISHED;Sędzia testowy PL1 A;6;4;2;3;0;0;7;4;15;10;11;14;2;1;Przykładowy rekord
