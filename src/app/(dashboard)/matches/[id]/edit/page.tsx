@@ -35,5 +35,5 @@ export default async function EditMatchPage({ params }: { params: Promise<{ id: 
     stats,
   };
 
-  return <div className="grid gap-5"><div><h1 className="text-2xl font-semibold">Edytuj mecz</h1><p className="text-sm text-zinc-500">Każda zmiana zostanie zapisana w historii.</p></div><MatchForm seasons={seasons} action={updateMatchAction} initial={initial} /></div>;
+  return <div className="grid gap-5"><div><h1 className="text-2xl font-semibold">Edytuj mecz</h1><p className="text-sm text-zinc-500">Zmień wynik, statystyki, sędziego lub dane spotkania. Każda korekta trafi do historii.</p></div><MatchForm seasons={seasons} action={updateMatchAction} initial={initial} /></div>;
 }

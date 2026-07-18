@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { MatchActionState } from "@/lib/actions/match-actions";
@@ -60,8 +61,23 @@ function localDateTime(iso?: string) {
 export function MatchForm({ seasons, action, initial }: { seasons: SeasonOption[]; action: MatchAction; initial?: InitialMatch }) {
   const [state, formAction] = useActionState(action, {});
   const [seasonId, setSeasonId] = useState(initial?.seasonId ?? seasons[0]?.id ?? "");
+  const [homeTeamId, setHomeTeamId] = useState(initial?.homeTeamId ?? "");
+  const [awayTeamId, setAwayTeamId] = useState(initial?.awayTeamId ?? "");
+  const [refereeId, setRefereeId] = useState(initial?.refereeId ?? "");
   const selected = useMemo(() => seasons.find((season) => season.id === seasonId), [seasonId, seasons]);
   const error = (field: string) => state.errors?.[field]?.[0];
+
+  function changeSeason(nextSeasonId: string) {
+    const nextSeason = seasons.find((season) => season.id === nextSeasonId);
+    setSeasonId(nextSeasonId);
+    if (!nextSeason?.teams.some(({ team }) => team.id === homeTeamId)) setHomeTeamId("");
+    if (!nextSeason?.teams.some(({ team }) => team.id === awayTeamId)) setAwayTeamId("");
+    if (!nextSeason?.refereeSeasons.some(({ referee }) => referee.id === refereeId)) setRefereeId("");
+  }
+
+  if (!seasons.length) {
+    return <Card className="p-8 text-center text-sm text-zinc-500">Najpierw dodaj aktywną ligę, sezon oraz drużyny w konfiguracji.</Card>;
+  }
 
   return (
     <form action={formAction} className="grid gap-5">
@@ -72,7 +88,7 @@ export function MatchForm({ seasons, action, initial }: { seasons: SeasonOption[
         <CardHeader><CardTitle>Dane meczu</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Liga i sezon" error={error("seasonId")}>
-            <Select name="seasonId" value={seasonId} onChange={(event) => setSeasonId(event.target.value)} required>
+            <Select name="seasonId" value={seasonId} onChange={(event) => changeSeason(event.target.value)} required>
               {seasons.map((season) => <option key={season.id} value={season.id}>{season.league.name} · {season.name}</option>)}
             </Select>
           </Field>
@@ -84,15 +100,15 @@ export function MatchForm({ seasons, action, initial }: { seasons: SeasonOption[
             </Select>
           </Field>
           <Field label="Gospodarz" error={error("homeTeamId")}>
-            <Select name="homeTeamId" defaultValue={initial?.homeTeamId ?? ""} required><option value="">Wybierz</option>{selected?.teams.map(({ team }) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
+            <Select name="homeTeamId" value={homeTeamId} onChange={(event) => setHomeTeamId(event.target.value)} required><option value="">Wybierz</option>{selected?.teams.map(({ team }) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
           </Field>
           <Field label="Gość" error={error("awayTeamId")}>
-            <Select name="awayTeamId" defaultValue={initial?.awayTeamId ?? ""} required><option value="">Wybierz</option>{selected?.teams.map(({ team }) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
+            <Select name="awayTeamId" value={awayTeamId} onChange={(event) => setAwayTeamId(event.target.value)} required><option value="">Wybierz</option>{selected?.teams.map(({ team }) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
           </Field>
           <Field label="Gole gospodarza" error={error("homeScore")}><Input name="homeScore" type="number" min="0" defaultValue={initial?.homeScore ?? ""} /></Field>
           <Field label="Gole gościa" error={error("awayScore")}><Input name="awayScore" type="number" min="0" defaultValue={initial?.awayScore ?? ""} /></Field>
           <Field label="Sędzia" error={error("refereeId")}>
-            <Select name="refereeId" defaultValue={initial?.refereeId ?? ""}><option value="">Brak</option>{selected?.refereeSeasons.map(({ referee }) => <option key={referee.id} value={referee.id}>{referee.name}</option>)}</Select>
+            <Select name="refereeId" value={refereeId} onChange={(event) => setRefereeId(event.target.value)}><option value="">Brak</option>{selected?.refereeSeasons.map(({ referee }) => <option key={referee.id} value={referee.id}>{referee.name}</option>)}</Select>
           </Field>
           <div className="md:col-span-2 xl:col-span-3"><Field label="Notatka" error={error("note")}><Textarea name="note" defaultValue={initial?.note ?? ""} /></Field></div>
         </CardContent>
@@ -113,7 +129,7 @@ export function MatchForm({ seasons, action, initial }: { seasons: SeasonOption[
           </div>
         </CardContent>
       </Card>
-      <div className="flex justify-end"><SubmitButton editing={Boolean(initial)} /></div>
+      <div className="flex justify-end gap-2"><Link href={initial ? `/matches/${initial.id}` : "/matches"} className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800">Anuluj</Link><SubmitButton editing={Boolean(initial)} /></div>
     </form>
   );
 }

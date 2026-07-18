@@ -61,6 +61,8 @@ export async function createMatchAction(_: MatchActionState, formData: FormData)
   const relationError = await validateRelations(parsed.data);
   if (relationError) return { message: relationError };
 
+  let createdMatchId: string | null = null;
+
   try {
     const manualSource = await prisma.dataSource.findFirst({ where: { type: DataSourceType.MANUAL } });
     await prisma.$transaction(async (tx) => {
@@ -80,6 +82,8 @@ export async function createMatchAction(_: MatchActionState, formData: FormData)
           stats: { create: statsData(parsed.data) },
         },
       });
+
+      createdMatchId = match.id;
 
       const auditValues = {
         ...parsed.data,
@@ -107,7 +111,8 @@ export async function createMatchAction(_: MatchActionState, formData: FormData)
 
   revalidatePath("/");
   revalidatePath("/matches");
-  redirect("/matches");
+  if (!createdMatchId) return { message: "Mecz zapisano, ale nie udało się odczytać jego identyfikatora." };
+  redirect(`/matches/${createdMatchId}`);
 }
 
 export async function updateMatchAction(_: MatchActionState, formData: FormData): Promise<MatchActionState> {
@@ -197,6 +202,7 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
 
   revalidatePath("/");
   revalidatePath("/matches");
+  revalidatePath(`/matches/${parsed.data.matchId}`);
   revalidatePath(`/matches/${parsed.data.matchId}/edit`);
-  redirect("/matches");
+  redirect(`/matches/${parsed.data.matchId}`);
 }

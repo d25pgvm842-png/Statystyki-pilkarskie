@@ -95,7 +95,7 @@ export default async function DashboardPage() {
             {latestMatches.map((match) => (
               <Link
                 key={match.id}
-                href={`/matches/${match.id}/edit`}
+                href={`/matches/${match.id}`}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-100 p-3 hover:border-emerald-400 dark:border-zinc-800"
               >
                 <div>

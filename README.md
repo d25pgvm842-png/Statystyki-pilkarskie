@@ -76,12 +76,13 @@ Przykładowy plik znajduje się w `public/templates/matches-import.csv`.
 - `src/lib/stats` — obliczenia.
 - `src/app` — widoki.
 
-## Wersja 0.3.0
+## Wersja 0.4.0
 
-- import CSV z podglądem i walidacją,
-- wykrywanie duplikatów,
-- raport błędów wierszy,
-- porównanie drużyn dom/wyjazd,
-- rozbudowana konfiguracja katalogów,
-- trwała naprawa aktualizacji hasła administratora,
-- build produkcyjny w CI.
+- pełny ekran szczegółów meczu,
+- historia zmian i ręcznych korekt,
+- filtry po kolejce oraz zakresie dat,
+- średnie dla aktualnego zestawu meczów,
+- zakres ostatnich 5/10/20 spotkań lub cały sezon,
+- rozbudowane statystyki sędziów,
+- pokrycie linii over 3.5, 4.5 i 5.5 żółtych kartek,
+- 8 testów automatycznych i build produkcyjny w CI.
