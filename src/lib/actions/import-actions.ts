@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import {
   AuditEntityType,
   DataSourceType,
@@ -58,9 +58,18 @@ type StoredImportRow = {
   refereeName: string | null;
   note: string | null;
   stats: Record<StatField, number | null>;
+  importedMatchId?: string | null;
+  duplicateMatchId?: string | null;
+  importedAt?: string | null;
 };
 
-function addLookup(map: Map<string, { id: string; name: string }>, value: string | null | undefined, item: { id: string; name: string }) {
+type ImportStatusCounts = Record<ImportRowStatus, number>;
+
+function addLookup(
+  map: Map<string, { id: string; name: string }>,
+  value: string | null | undefined,
+  item: { id: string; name: string },
+) {
   if (!value) return;
   const key = normalizeLookup(value);
   if (key) map.set(key, item);
@@ -80,6 +89,75 @@ function storedRow(value: Prisma.JsonValue): StoredImportRow {
     throw new Error("Nieprawidłowe dane wiersza importu.");
   }
   return value as unknown as StoredImportRow;
+}
+
+function inputRow(value: StoredImportRow): Prisma.InputJsonValue {
+  return value as unknown as Prisma.InputJsonValue;
+}
+
+function messages(value: Prisma.JsonValue | null) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function databaseErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  return String((error as { code?: unknown }).code ?? "");
+}
+
+async function rowStatusCounts(client: Prisma.TransactionClient | typeof prisma, batchId: string) {
+  const grouped = await client.importRow.groupBy({
+    by: ["status"],
+    where: { importId: batchId },
+    _count: { _all: true },
+  });
+
+  const counts: ImportStatusCounts = {
+    VALID: 0,
+    DUPLICATE: 0,
+    INVALID: 0,
+    IMPORTED: 0,
+    SKIPPED: 0,
+  };
+
+  for (const item of grouped) counts[item.status] = item._count._all;
+  return counts;
+}
+
+async function syncBatchCounters(client: Prisma.TransactionClient | typeof prisma, batchId: string) {
+  const counts = await rowStatusCounts(client, batchId);
+  await client.importBatch.update({
+    where: { id: batchId },
+    data: {
+      rowsValid: counts.VALID + counts.IMPORTED,
+      rowsInvalid: counts.INVALID,
+      rowsDuplicate: counts.DUPLICATE,
+    },
+  });
+  return counts;
+}
+
+function duplicateKey(data: Pick<StoredImportRow, "homeTeamId" | "awayTeamId" | "kickoffAt">) {
+  return `${data.homeTeamId}:${data.awayTeamId}:${data.kickoffAt}`;
+}
+
+function auditValues(data: StoredImportRow, batchId: string, rowId: string, fileName: string) {
+  return {
+    importId: batchId,
+    importRowId: rowId,
+    importFileName: fileName,
+    seasonId: data.seasonId,
+    round: data.round,
+    kickoffAt: data.kickoffAt,
+    homeTeamId: data.homeTeamId,
+    awayTeamId: data.awayTeamId,
+    homeScore: data.homeScore,
+    awayScore: data.awayScore,
+    status: data.status,
+    refereeId: data.refereeId,
+    note: data.note,
+    ...data.stats,
+  };
 }
 
 export async function uploadCsvImportAction(formData: FormData) {
@@ -124,12 +202,15 @@ export async function uploadCsvImportAction(formData: FormData) {
 
   const existingMatches = await prisma.match.findMany({
     where: { seasonId },
-    select: { homeTeamId: true, awayTeamId: true, kickoffAt: true },
+    select: { id: true, homeTeamId: true, awayTeamId: true, kickoffAt: true },
   });
-  const duplicateKeys = new Set(
-    existingMatches.map((match) => `${match.homeTeamId}:${match.awayTeamId}:${match.kickoffAt.toISOString()}`),
+  const databaseDuplicates = new Map(
+    existingMatches.map((match) => [
+      `${match.homeTeamId}:${match.awayTeamId}:${match.kickoffAt.toISOString()}`,
+      match.id,
+    ]),
   );
-  const fileKeys = new Set<string>();
+  const fileKeys = new Map<string, number>();
 
   const source = await prisma.dataSource.upsert({
     where: { providerCode: "csv-import" },
@@ -152,6 +233,7 @@ export async function uploadCsvImportAction(formData: FormData) {
   let duplicate = 0;
 
   const rows: Prisma.ImportRowCreateManyInput[] = parsed.records.map((record, index) => {
+    const rowNumber = index + 2;
     const errors: string[] = [];
     const home = teamLookup.get(normalizeLookup(record.home_team ?? ""));
     const away = teamLookup.get(normalizeLookup(record.away_team ?? ""));
@@ -183,18 +265,10 @@ export async function uploadCsvImportAction(formData: FormData) {
       stats[databaseField] = integer(record, csvField, csvField, errors);
     }
 
-    if (
-      stats.homeShotsOnTarget !== null &&
-      stats.homeShots !== null &&
-      stats.homeShotsOnTarget > stats.homeShots
-    ) {
+    if (stats.homeShotsOnTarget !== null && stats.homeShots !== null && stats.homeShotsOnTarget > stats.homeShots) {
       errors.push("Celne strzały gospodarza nie mogą przekraczać wszystkich strzałów.");
     }
-    if (
-      stats.awayShotsOnTarget !== null &&
-      stats.awayShots !== null &&
-      stats.awayShotsOnTarget > stats.awayShots
-    ) {
+    if (stats.awayShotsOnTarget !== null && stats.awayShots !== null && stats.awayShotsOnTarget > stats.awayShots) {
       errors.push("Celne strzały gościa nie mogą przekraczać wszystkich strzałów.");
     }
 
@@ -216,15 +290,26 @@ export async function uploadCsvImportAction(formData: FormData) {
       refereeName: referee?.name ?? (refereeText || null),
       note,
       stats,
+      importedMatchId: null,
+      duplicateMatchId: null,
+      importedAt: null,
     };
 
     let rowStatus: ImportRowStatus = errors.length ? ImportRowStatus.INVALID : ImportRowStatus.VALID;
     if (!errors.length && home && away && kickoffAt) {
       const key = `${home.id}:${away.id}:${kickoffAt.toISOString()}`;
-      if (duplicateKeys.has(key) || fileKeys.has(key)) {
+      const existingMatchId = databaseDuplicates.get(key);
+      const firstRow = fileKeys.get(key);
+
+      if (existingMatchId) {
         rowStatus = ImportRowStatus.DUPLICATE;
+        normalized.duplicateMatchId = existingMatchId;
+        errors.push("Taki mecz już istnieje w bazie.");
+      } else if (firstRow) {
+        rowStatus = ImportRowStatus.DUPLICATE;
+        errors.push(`Powtórzenie w pliku. Pierwszy raz występuje w wierszu ${firstRow}.`);
       } else {
-        fileKeys.add(key);
+        fileKeys.set(key, rowNumber);
       }
     }
 
@@ -234,9 +319,9 @@ export async function uploadCsvImportAction(formData: FormData) {
 
     return {
       importId: batch.id,
-      rowNumber: index + 2,
+      rowNumber,
       status: rowStatus,
-      rawData: normalized as unknown as Prisma.InputJsonValue,
+      rawData: inputRow(normalized),
       errors: errors.length ? (errors as unknown as Prisma.InputJsonValue) : undefined,
     };
   });
@@ -259,6 +344,109 @@ export async function uploadCsvImportAction(formData: FormData) {
   redirect(`/imports/${batch.id}`);
 }
 
+export async function toggleImportRowAction(formData: FormData) {
+  await requireUser();
+  const batchId = String(formData.get("batchId") ?? "").trim();
+  const rowId = String(formData.get("rowId") ?? "").trim();
+  const target = String(formData.get("target") ?? "").trim();
+  if (!batchId || !rowId || !["VALID", "SKIPPED"].includes(target)) redirect("/imports");
+
+  const row = await prisma.importRow.findUnique({
+    where: { id: rowId },
+    include: { import: { select: { id: true, status: true } } },
+  });
+  if (!row || row.importId !== batchId || row.import.status !== ImportStatus.READY) {
+    redirect(`/imports/${batchId}?error=state`);
+  }
+
+  if (target === "SKIPPED") {
+    if (row.status !== ImportRowStatus.VALID) redirect(`/imports/${batchId}?error=row`);
+    await prisma.$transaction(async (tx) => {
+      await tx.importRow.update({ where: { id: rowId }, data: { status: ImportRowStatus.SKIPPED } });
+      await syncBatchCounters(tx, batchId);
+    });
+  } else {
+    if (row.status !== ImportRowStatus.SKIPPED) redirect(`/imports/${batchId}?error=row`);
+    const data = storedRow(row.rawData);
+
+    const existing = await prisma.match.findUnique({
+      where: {
+        seasonId_homeTeamId_awayTeamId_kickoffAt: {
+          seasonId: data.seasonId,
+          homeTeamId: data.homeTeamId,
+          awayTeamId: data.awayTeamId,
+          kickoffAt: new Date(data.kickoffAt),
+        },
+      },
+      select: { id: true },
+    });
+
+    const siblingRows = await prisma.importRow.findMany({
+      where: {
+        importId: batchId,
+        id: { not: rowId },
+        status: { in: [ImportRowStatus.VALID, ImportRowStatus.IMPORTED] },
+      },
+      select: { rowNumber: true, rawData: true },
+    });
+    const sibling = siblingRows.find((item) => duplicateKey(storedRow(item.rawData)) === duplicateKey(data));
+
+    await prisma.$transaction(async (tx) => {
+      if (existing || sibling) {
+        const nextData = { ...data, duplicateMatchId: existing?.id ?? null };
+        const nextMessages = existing
+          ? ["Taki mecz pojawił się już w bazie po utworzeniu podglądu importu."]
+          : [`Taki mecz jest już aktywny w wierszu ${sibling?.rowNumber}.`];
+        await tx.importRow.update({
+          where: { id: rowId },
+          data: {
+            status: ImportRowStatus.DUPLICATE,
+            rawData: inputRow(nextData),
+            errors: nextMessages as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } else {
+        await tx.importRow.update({
+          where: { id: rowId },
+          data: { status: ImportRowStatus.VALID, errors: Prisma.DbNull },
+        });
+      }
+      await syncBatchCounters(tx, batchId);
+    });
+  }
+
+  revalidatePath("/imports");
+  revalidatePath(`/imports/${batchId}`);
+  redirect(`/imports/${batchId}`);
+}
+
+export async function cancelCsvImportAction(formData: FormData) {
+  await requireUser();
+  const batchId = String(formData.get("batchId") ?? "").trim();
+  if (!batchId) redirect("/imports");
+
+  const imported = await prisma.importRow.count({
+    where: { importId: batchId, status: ImportRowStatus.IMPORTED },
+  });
+  if (imported > 0) redirect(`/imports/${batchId}?error=imported`);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.importRow.updateMany({
+      where: { importId: batchId, status: ImportRowStatus.VALID },
+      data: { status: ImportRowStatus.SKIPPED },
+    });
+    await tx.importBatch.update({
+      where: { id: batchId },
+      data: { status: ImportStatus.FAILED, completedAt: new Date() },
+    });
+    await syncBatchCounters(tx, batchId);
+  });
+
+  revalidatePath("/imports");
+  revalidatePath(`/imports/${batchId}`);
+  redirect(`/imports/${batchId}?ok=cancelled`);
+}
+
 export async function commitCsvImportAction(formData: FormData) {
   const user = await requireUser();
   const batchId = String(formData.get("batchId") ?? "").trim();
@@ -275,90 +463,141 @@ export async function commitCsvImportAction(formData: FormData) {
   });
 
   if (!batch || batch.status !== ImportStatus.READY) redirect(`/imports/${batchId}?error=state`);
-
-  let imported = 0;
-  let duplicate = batch.rowsDuplicate;
+  if (!batch.rows.length) redirect(`/imports/${batchId}?error=empty`);
 
   for (const row of batch.rows) {
     const data = storedRow(row.rawData);
-    const duplicateMatch = await prisma.match.findUnique({
-      where: {
-        seasonId_homeTeamId_awayTeamId_kickoffAt: {
-          seasonId: data.seasonId,
-          homeTeamId: data.homeTeamId,
-          awayTeamId: data.awayTeamId,
-          kickoffAt: new Date(data.kickoffAt),
-        },
-      },
-      select: { id: true },
-    });
 
-    if (duplicateMatch) {
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: { status: ImportRowStatus.DUPLICATE },
-      });
-      duplicate += 1;
-      continue;
-    }
-
-    await prisma.$transaction(async (tx) => {
-      const match = await tx.match.create({
-        data: {
-          seasonId: data.seasonId,
-          round: data.round,
-          kickoffAt: new Date(data.kickoffAt),
-          homeTeamId: data.homeTeamId,
-          awayTeamId: data.awayTeamId,
-          homeScore: data.homeScore,
-          awayScore: data.awayScore,
-          status: data.status,
-          refereeId: data.refereeId,
-          dataSourceId: batch.sourceId,
-          note: data.note,
-          stats: { create: data.stats },
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          entityType: AuditEntityType.MATCH,
-          entityId: match.id,
-          action: "IMPORT_CSV",
-          userId: user.id,
-          changes: {
-            create: [
-              { fieldName: "importId", oldValue: null, newValue: batch.id },
-              { fieldName: "kickoffAt", oldValue: null, newValue: data.kickoffAt },
-              { fieldName: "homeTeamId", oldValue: null, newValue: data.homeTeamId },
-              { fieldName: "awayTeamId", oldValue: null, newValue: data.awayTeamId },
-              { fieldName: "status", oldValue: null, newValue: valueToString(data.status) },
-            ],
+    try {
+      const duplicateMatch = await prisma.match.findUnique({
+        where: {
+          seasonId_homeTeamId_awayTeamId_kickoffAt: {
+            seasonId: data.seasonId,
+            homeTeamId: data.homeTeamId,
+            awayTeamId: data.awayTeamId,
+            kickoffAt: new Date(data.kickoffAt),
           },
         },
+        select: { id: true },
       });
 
-      await tx.importRow.update({
-        where: { id: row.id },
-        data: { status: ImportRowStatus.IMPORTED },
+      if (duplicateMatch) {
+        await prisma.importRow.update({
+          where: { id: row.id },
+          data: {
+            status: ImportRowStatus.DUPLICATE,
+            rawData: inputRow({ ...data, duplicateMatchId: duplicateMatch.id }),
+            errors: ["Taki mecz już istnieje w bazie."] as unknown as Prisma.InputJsonValue,
+          },
+        });
+        continue;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const importedAt = new Date();
+        const match = await tx.match.create({
+          data: {
+            seasonId: data.seasonId,
+            round: data.round,
+            kickoffAt: new Date(data.kickoffAt),
+            homeTeamId: data.homeTeamId,
+            awayTeamId: data.awayTeamId,
+            homeScore: data.homeScore,
+            awayScore: data.awayScore,
+            status: data.status,
+            refereeId: data.refereeId,
+            dataSourceId: batch.sourceId,
+            sourceExternalId: `csv:${batch.id}:${row.id}`,
+            sourceUpdatedAt: importedAt,
+            note: data.note,
+            stats: { create: data.stats },
+          },
+        });
+
+        const values = auditValues(data, batch.id, row.id, batch.fileName);
+        await tx.auditLog.create({
+          data: {
+            entityType: AuditEntityType.MATCH,
+            entityId: match.id,
+            action: "IMPORT_CSV",
+            userId: user.id,
+            changes: {
+              create: Object.entries(values).map(([fieldName, newValue]) => ({
+                fieldName,
+                oldValue: null,
+                newValue: valueToString(newValue),
+              })),
+            },
+          },
+        });
+
+        await tx.importRow.update({
+          where: { id: row.id },
+          data: {
+            status: ImportRowStatus.IMPORTED,
+            rawData: inputRow({
+              ...data,
+              importedMatchId: match.id,
+              duplicateMatchId: null,
+              importedAt: importedAt.toISOString(),
+            }),
+            errors: Prisma.DbNull,
+          },
+        });
       });
-    });
-    imported += 1;
+    } catch (error) {
+      if (databaseErrorCode(error) === "P2002") {
+        const duplicate = await prisma.match.findFirst({
+          where: {
+            seasonId: data.seasonId,
+            homeTeamId: data.homeTeamId,
+            awayTeamId: data.awayTeamId,
+            kickoffAt: new Date(data.kickoffAt),
+          },
+          select: { id: true },
+        });
+        await prisma.importRow.update({
+          where: { id: row.id },
+          data: {
+            status: ImportRowStatus.DUPLICATE,
+            rawData: inputRow({ ...data, duplicateMatchId: duplicate?.id ?? null }),
+            errors: ["Duplikat wykryty podczas zapisu do bazy."] as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } else {
+        await prisma.importRow.update({
+          where: { id: row.id },
+          data: {
+            status: ImportRowStatus.INVALID,
+            errors: [
+              ...messages(row.errors),
+              "Nie udało się zapisać tego wiersza. Pozostałe poprawne mecze zostały przetworzone.",
+            ] as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
   }
 
-  await prisma.importBatch.update({
-    where: { id: batch.id },
-    data: {
-      status: ImportStatus.COMPLETED,
-      rowsValid: imported,
-      rowsDuplicate: duplicate,
-      completedAt: new Date(),
-    },
+  const counts = await prisma.$transaction(async (tx) => {
+    const result = await syncBatchCounters(tx, batch.id);
+    const completed = result.IMPORTED > 0 || result.DUPLICATE > 0 || result.SKIPPED > 0;
+    await tx.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: completed ? ImportStatus.COMPLETED : ImportStatus.FAILED,
+        completedAt: new Date(),
+      },
+    });
+    return result;
   });
 
   revalidatePath("/");
   revalidatePath("/matches");
+  revalidatePath("/teams");
+  revalidatePath("/referees");
+  revalidatePath("/comparison");
   revalidatePath("/imports");
   revalidatePath(`/imports/${batch.id}`);
-  redirect(`/imports/${batch.id}?ok=completed`);
+  redirect(`/imports/${batch.id}?ok=${counts.IMPORTED > 0 ? "completed" : "processed"}`);
 }

@@ -86,3 +86,7 @@ Przykładowy plik znajduje się w `public/templates/matches-import.csv`.
 - rozbudowane statystyki sędziów,
 - pokrycie linii over 3.5, 4.5 i 5.5 żółtych kartek,
 - 8 testów automatycznych i build produkcyjny w CI.
+
+## Wersja 0.5.0
+
+Sprint 1.4B domyka produkcyjny przepływ importu CSV: zatwierdzanie do bazy, ponowne sprawdzanie duplikatów, pomijanie pojedynczych wierszy, zachowanie anulowanych importów, eksport raportu oraz pełny audyt każdego utworzonego meczu.
