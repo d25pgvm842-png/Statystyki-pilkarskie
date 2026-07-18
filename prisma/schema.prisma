@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  POSTPONED
+  CANCELLED
+}
+
+enum DataSourceType {
+  MANUAL
+  CSV
+  XLSX
+  API
+}
+
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  READY
+  COMPLETED
+  FAILED
+}
+
+enum ImportRowStatus {
+  VALID
+  DUPLICATE
+  INVALID
+  IMPORTED
+  SKIPPED
+}
+
+enum AuditEntityType {
+  MATCH
+  MATCH_STATS
+  TEAM
+  REFEREE
+  SEASON
+  LEAGUE
+}
+
+enum LineScope {
+  MATCH_TOTAL
+  TEAM_FOR
+  TEAM_AGAINST
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  role         UserRole     @default(ANALYST)
+  active       Boolean      @default(true)
+  customLines  CustomLine[]
+  auditLogs    AuditLog[]
+  imports      ImportBatch[]
+  overrides    DataOverride[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model League {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  country   String
+  code      String   @unique
+  active    Boolean  @default(true)
+  seasons   Season[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Season {
+  id               String          @id @default(cuid())
+  leagueId         String
+  name             String
+  startsAt         DateTime
+  endsAt           DateTime
+  active           Boolean         @default(false)
+  league           League          @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  teams            SeasonTeam[]
+  matches          Match[]
+  refereeSeasons   RefereeSeason[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([leagueId, name])
+  @@index([leagueId, active])
+}
+
+model Team {
+  id                String       @id @default(cuid())
+  name              String
+  shortName         String?
+  slug              String       @unique
+  country           String
+  active            Boolean      @default(true)
+  seasonMemberships SeasonTeam[]
+  homeMatches       Match[]      @relation("HomeTeam")
+  awayMatches       Match[]      @relation("AwayTeam")
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+
+model SeasonTeam {
+  id        String   @id @default(cuid())
+  seasonId  String
+  teamId    String
+  season    Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@unique([seasonId, teamId])
+  @@index([teamId])
+}
+
+model Referee {
+  id          String          @id @default(cuid())
+  name        String
+  slug        String          @unique
+  active      Boolean         @default(true)
+  seasons     RefereeSeason[]
+  matches     Match[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model RefereeSeason {
+  id        String   @id @default(cuid())
+  refereeId String
+  seasonId  String
+  referee   Referee  @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+  season    Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([refereeId, seasonId])
+  @@index([seasonId])
+}
+
+model DataSource {
+  id           String         @id @default(cuid())
+  name         String
+  type         DataSourceType
+  providerCode String?        @unique
+  active       Boolean        @default(true)
+  matches      Match[]
+  imports      ImportBatch[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Match {
+  id                  String         @id @default(cuid())
+  seasonId            String
+  round               Int?
+  kickoffAt           DateTime
+  homeTeamId          String
+  awayTeamId          String
+  homeScore           Int?
+  awayScore           Int?
+  status              MatchStatus    @default(SCHEDULED)
+  refereeId           String?
+  dataSourceId        String?
+  sourceExternalId    String?
+  sourceUpdatedAt     DateTime?
+  note                String?
+  season              Season         @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  homeTeam            Team           @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeam            Team           @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  referee             Referee?       @relation(fields: [refereeId], references: [id], onDelete: SetNull)
+  dataSource          DataSource?    @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  stats               MatchStats?
+  overrides           DataOverride[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([seasonId, homeTeamId, awayTeamId, kickoffAt])
+  @@index([seasonId, kickoffAt])
+  @@index([homeTeamId, kickoffAt])
+  @@index([awayTeamId, kickoffAt])
+  @@index([refereeId])
+}
+
+model MatchStats {
+  id                  String   @id @default(cuid())
+  matchId             String   @unique
+  homeCorners         Int?
+  awayCorners         Int?
+  homeYellowCards     Int?
+  awayYellowCards     Int?
+  homeRedCards        Int?
+  awayRedCards        Int?
+  homeShotsOnTarget   Int?
+  awayShotsOnTarget   Int?
+  homeShots            Int?
+  awayShots            Int?
+  homeFouls            Int?
+  awayFouls            Int?
+  homeOffsides         Int?
+  awayOffsides         Int?
+  match                Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model DataOverride {
+  id          String   @id @default(cuid())
+  matchId     String
+  fieldName   String
+  reason      String?
+  createdById String
+  match       Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+
+  @@unique([matchId, fieldName])
+  @@index([createdById])
+}
+
+model ImportBatch {
+  id            String       @id @default(cuid())
+  fileName      String
+  status        ImportStatus @default(PENDING)
+  sourceId      String?
+  createdById   String
+  rowsTotal     Int          @default(0)
+  rowsValid     Int          @default(0)
+  rowsInvalid   Int          @default(0)
+  rowsDuplicate Int          @default(0)
+  source        DataSource?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  createdBy     User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  rows          ImportRow[]
+  createdAt     DateTime     @default(now())
+  completedAt   DateTime?
+
+  @@index([createdAt])
+}
+
+model ImportRow {
+  id         String          @id @default(cuid())
+  importId   String
+  rowNumber  Int
+  status     ImportRowStatus
+  rawData    Json
+  errors     Json?
+  import     ImportBatch     @relation(fields: [importId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now())
+
+  @@unique([importId, rowNumber])
+}
+
+model AuditLog {
+  id          String          @id @default(cuid())
+  entityType  AuditEntityType
+  entityId    String
+  action      String
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  changes     AuditChange[]
+  createdAt   DateTime        @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model AuditChange {
+  id         String   @id @default(cuid())
+  auditLogId String
+  fieldName  String
+  oldValue   String?
+  newValue   String?
+  auditLog   AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+}
+
+model CustomLine {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  statKey   String
+  scope     LineScope
+  threshold Float
+  active    Boolean   @default(true)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, statKey])
+}
