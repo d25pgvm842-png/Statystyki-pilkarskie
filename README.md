@@ -7,7 +7,14 @@ Aplikacja Next.js do zbierania i analizowania statystyk piłkarskich.
 - Node.js 22 lub nowszy
 - PostgreSQL 16/17 albo Docker
 
-## Uruchomienie
+
+## Najprostsze uruchomienie na Windows
+
+Po zainstalowaniu Node.js 22 i Docker Desktop kliknij dwa razy `URUCHOM_LOKALNIE.bat`. Skrypt uruchomi PostgreSQL, zainstaluje zależności, utworzy bazę, doda dane startowe i włączy aplikację.
+
+Aktualizacje projektu wysyłasz przez `AKTUALIZUJ_GITHUB.bat`.
+
+## Uruchomienie ręczne
 
 ```bash
 cp .env.example .env

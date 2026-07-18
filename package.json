@@ -15,7 +15,8 @@
     "test": "tsx --test src/**/*.test.ts",
     "db:deploy": "prisma migrate deploy",
     "postinstall": "prisma generate",
-    "vercel-build": "prisma generate && prisma migrate deploy && prisma db seed && next build"
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
+    "db:seed:production": "prisma db seed"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
