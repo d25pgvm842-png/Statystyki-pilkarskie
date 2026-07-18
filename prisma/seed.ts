@@ -22,8 +22,8 @@ function slugify(value: string) {
 }
 
 async function main() {
-  const email = (process.env.ADMIN_EMAIL ?? "admin@example.com").toLowerCase();
-  const password = process.env.ADMIN_PASSWORD ?? "zmien-mnie";
+  const email = (process.env.ADMIN_EMAIL ?? "admin@staty.local").toLowerCase();
+  const password = process.env.ADMIN_PASSWORD ?? "Staty-Start-2026!";
   const passwordHash = await hash(password, 12);
   await prisma.user.upsert({
     where: { email },

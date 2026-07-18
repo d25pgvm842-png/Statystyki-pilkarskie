@@ -1,15 +1,12 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { getRuntimeEnv } from "@/lib/env";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("Brak zmiennej DATABASE_URL.");
-  }
-
-  const adapter = new PrismaPg({ connectionString });
+  const { DATABASE_URL } = getRuntimeEnv();
+  const adapter = new PrismaPg({ connectionString: DATABASE_URL });
   return new PrismaClient({ adapter });
 }
 

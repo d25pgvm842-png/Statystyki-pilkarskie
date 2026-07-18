@@ -90,3 +90,8 @@ Przykładowy plik znajduje się w `public/templates/matches-import.csv`.
 ## Wersja 0.5.0
 
 Sprint 1.4B domyka produkcyjny przepływ importu CSV: zatwierdzanie do bazy, ponowne sprawdzanie duplikatów, pomijanie pojedynczych wierszy, zachowanie anulowanych importów, eksport raportu oraz pełny audyt każdego utworzonego meczu.
+
+
+## Wdrożenie online
+
+Projekt jest przygotowany do Vercel i zarządzanego PostgreSQL. Instrukcja: `docs/WDROZENIE_VERCEL.md`. Stan bazy można sprawdzić pod `/api/health`.

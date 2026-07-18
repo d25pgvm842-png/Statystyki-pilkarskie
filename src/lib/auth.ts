@@ -2,11 +2,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/db";
+import { getRuntimeEnv } from "@/lib/env";
 
 const COOKIE_NAME = "staty_session";
-const secret = new TextEncoder().encode(
-  process.env.AUTH_SECRET ?? "development-secret-change-before-production",
-);
+const secret = new TextEncoder().encode(getRuntimeEnv().AUTH_SECRET);
 
 export async function createSession(userId: string) {
   const token = await new SignJWT({ sub: userId })
