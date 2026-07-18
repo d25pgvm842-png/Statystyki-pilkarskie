@@ -51,3 +51,7 @@ npm run build
 ## Ważne
 
 Dane seedujące służą tylko do lokalnego uruchomienia i demonstracji. W produkcji zespoły, sędziowie i mecze będą pochodziły z importu albo adaptera API.
+
+## Wersja 1.2
+
+Dodano panel administratora `Konfiguracja bazy` do zarządzania ligami, sezonami, drużynami i sędziami.

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, DatabaseZap, Gauge, Scale, ShieldCheck, Users, PlusCircle, LogOut } from "lucide-react";
+import { BarChart3, DatabaseZap, Gauge, Scale, ShieldCheck, Users, PlusCircle, LogOut, Settings } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth-actions";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ const links = [
   { href: "/teams", label: "Drużyny", icon: Users },
   { href: "/referees", label: "Sędziowie", icon: Scale },
   { href: "/data-quality", label: "Kontrola danych", icon: ShieldCheck },
+  { href: "/settings", label: "Konfiguracja", icon: Settings },
 ];
 
 export function AppShell({ children, user }: { children: React.ReactNode; user: { name: string; role: string } }) {
