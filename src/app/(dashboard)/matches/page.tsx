@@ -30,6 +30,7 @@ function dateBoundary(value: string, endOfDay = false) {
 
 export default async function MatchesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
+  const deleted = stringParam(params.deleted) === "1";
   const leagueId = stringParam(params.leagueId);
   const seasonId = stringParam(params.seasonId);
   const teamId = stringParam(params.teamId);
@@ -90,6 +91,12 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         <div><h1 className="text-2xl font-semibold">Mecze</h1><p className="text-sm text-zinc-500">Filtry, szybkie średnie oraz pełny podgląd każdego spotkania.</p></div>
         <Link href="/matches/new" className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700"><PlusCircle size={16} className="mr-2" />Dodaj mecz</Link>
       </div>
+
+      {deleted ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+          Mecz został usunięty, a jego pełny snapshot zapisano w audycie.
+        </div>
+      ) : null}
 
       <Card><CardContent>
         <Form action="/matches" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">

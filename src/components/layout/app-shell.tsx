@@ -4,6 +4,7 @@ import {
   DatabaseZap,
   FileUp,
   Gauge,
+  HardDriveDownload,
   GitCompareArrows,
   LogOut,
   PlusCircle,
@@ -34,7 +35,11 @@ export function AppShell({
   user: { name: string; role: string };
 }) {
   const navigation = user.role === "ADMIN"
-    ? [...links, { href: "/settings", label: "Konfiguracja", icon: Settings }]
+    ? [
+        ...links,
+        { href: "/data-management", label: "Dane i kopie", icon: HardDriveDownload },
+        { href: "/settings", label: "Konfiguracja", icon: Settings },
+      ]
     : links;
 
   return (

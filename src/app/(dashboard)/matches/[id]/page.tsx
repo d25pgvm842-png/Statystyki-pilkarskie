@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Clock3, Database, Pencil, Scale, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock3, Database, Download, Pencil, Scale, ShieldCheck, Trash2 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AuditEntityType } from "@/generated/prisma/enums";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeleteMatchForm } from "@/components/matches/delete-match-form";
 import {
   MATCH_FIELD_LABELS,
   MATCH_STATUS_CLASSES,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/matches/presentation";
 import { MATCH_TOTAL_STAT_DEFINITIONS } from "@/lib/stats/match-analytics";
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 
 function displayScore(homeScore: number | null, awayScore: number | null) {
   return homeScore === null || awayScore === null ? "– : –" : `${homeScore} : ${awayScore}`;
@@ -22,6 +24,7 @@ function statValue(value: number | null | undefined) {
 
 export default async function MatchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const user = await requireUser();
   const [match, auditLogs] = await Promise.all([
     prisma.match.findUnique({
       where: { id },
@@ -171,6 +174,27 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
       </div>
+
+      {user.role === "ADMIN" ? (
+        <Card className="border-red-200 dark:border-red-950">
+          <CardHeader><CardTitle>Strefa niebezpieczna</CardTitle></CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="flex gap-3 text-sm text-zinc-600 dark:text-zinc-300">
+              <Trash2 className="mt-0.5 shrink-0 text-red-600" size={20} />
+              <p>
+                Usunięcie kasuje mecz i jego statystyki. Pełny snapshot zostanie zapisany w audycie, ale przed operacją pobierz kopię danych.
+              </p>
+            </div>
+            <a
+              href="/api/admin/backup"
+              className="inline-flex h-9 w-fit items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+            >
+              <Download size={15} className="mr-2" />Pobierz kopię przed usunięciem
+            </a>
+            <DeleteMatchForm matchId={match.id} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

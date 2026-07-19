@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuditEntityType, DataSourceType } from "@/generated/prisma/enums";
+import { DELETE_MATCH_CONFIRMATION, isDeleteMatchConfirmationValid } from "@/lib/backup/delete-confirmation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { valueToString } from "@/lib/utils";
@@ -205,4 +206,83 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
   revalidatePath(`/matches/${parsed.data.matchId}`);
   revalidatePath(`/matches/${parsed.data.matchId}/edit`);
   redirect(`/matches/${parsed.data.matchId}`);
+}
+
+
+export async function deleteMatchAction(_: MatchActionState, formData: FormData): Promise<MatchActionState> {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") return { message: "Tylko administrator może usuwać mecze." };
+
+  const matchId = String(formData.get("matchId") ?? "").trim();
+  if (!matchId) return { message: "Brak identyfikatora meczu." };
+
+  if (!isDeleteMatchConfirmationValid(formData.get("confirmation"))) {
+    return { message: `Wpisz dokładnie: ${DELETE_MATCH_CONFIRMATION}` };
+  }
+
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      season: { include: { league: true } },
+      homeTeam: true,
+      awayTeam: true,
+      referee: true,
+      dataSource: true,
+      stats: true,
+    },
+  });
+
+  if (!match) return { message: "Mecz nie istnieje albo został już usunięty." };
+
+  const snapshot: Record<string, unknown> = {
+    matchLabel: `${match.homeTeam.name} – ${match.awayTeam.name}`,
+    leagueSeason: `${match.season.league.name} · ${match.season.name}`,
+    seasonId: match.seasonId,
+    round: match.round,
+    kickoffAt: match.kickoffAt,
+    homeTeamId: match.homeTeamId,
+    awayTeamId: match.awayTeamId,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    status: match.status,
+    refereeId: match.refereeId,
+    refereeName: match.referee?.name ?? null,
+    dataSource: match.dataSource?.name ?? null,
+    sourceExternalId: match.sourceExternalId,
+    note: match.note,
+    ...Object.fromEntries(statFields.map((field) => [field, match.stats?.[field] ?? null])),
+  };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          entityType: AuditEntityType.MATCH,
+          entityId: match.id,
+          action: "DELETE",
+          userId: user.id,
+          changes: {
+            create: Object.entries(snapshot).map(([fieldName, newValue]) => ({
+              fieldName,
+              oldValue: null,
+              newValue: valueToString(newValue),
+            })),
+          },
+        },
+      });
+
+      await tx.match.delete({ where: { id: match.id } });
+    });
+  } catch {
+    return { message: "Nie udało się usunąć meczu. Pobierz kopię danych i spróbuj ponownie." };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/matches");
+  revalidatePath("/teams");
+  revalidatePath("/referees");
+  revalidatePath("/comparison");
+  revalidatePath("/data-quality");
+  revalidatePath("/data-management");
+  redirect("/matches?deleted=1");
 }
