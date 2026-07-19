@@ -12,14 +12,11 @@ import {
   Users,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { findDataQualityIssues } from "@/lib/data/data-quality";
+import {
+  findDataQualityIssues,
+  hasCompleteRequiredStats,
+} from "@/lib/data/data-quality";
 import { prisma } from "@/lib/db";
-
-const statFields = [
-  "homeCorners", "awayCorners", "homeYellowCards", "awayYellowCards",
-  "homeRedCards", "awayRedCards", "homeShotsOnTarget", "awayShotsOnTarget",
-  "homeShots", "awayShots", "homeFouls", "awayFouls", "homeOffsides", "awayOffsides",
-] as const;
 
 export default async function DashboardPage() {
   const [matchCount, leagueCount, seasonCount, teamCount, latestMatches, allMatches, latestImports] = await Promise.all([
@@ -33,7 +30,13 @@ export default async function DashboardPage() {
       take: 8,
     }),
     prisma.match.findMany({
-      include: { stats: true, season: { include: { league: true } }, homeTeam: true, awayTeam: true },
+      include: {
+        stats: true,
+        dataSource: true,
+        season: { include: { league: true } },
+        homeTeam: true,
+        awayTeam: true,
+      },
     }),
     prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
@@ -41,9 +44,7 @@ export default async function DashboardPage() {
   const issues = findDataQualityIssues(allMatches);
   const missingReferee = allMatches.filter((match) => match.status === "FINISHED" && !match.refereeId).length;
   const finished = allMatches.filter((match) => match.status === "FINISHED");
-  const complete = finished.filter((match) =>
-    match.stats && statFields.every((field) => typeof match.stats?.[field] === "number"),
-  ).length;
+  const complete = finished.filter(hasCompleteRequiredStats).length;
   const completeness = finished.length ? Math.round((complete / finished.length) * 100) : 0;
 
   const cards = [
