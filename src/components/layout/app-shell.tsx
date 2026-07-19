@@ -49,17 +49,17 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
       <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-4 px-4 lg:px-6">
+        <div className="flex h-16 w-full items-center gap-3 px-4 lg:px-6 xl:px-8">
           <Link href="/" className="flex shrink-0 items-center gap-2 font-semibold">
             <BarChart3 className="text-emerald-600" size={22} />
             <span>Staty piłkarskie</span>
           </Link>
-          <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:flex">
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
             {navigation.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
-                className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-[13px] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 xl:gap-2 xl:px-3 xl:text-sm dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
               >
                 <Icon size={16} />{label}
               </Link>

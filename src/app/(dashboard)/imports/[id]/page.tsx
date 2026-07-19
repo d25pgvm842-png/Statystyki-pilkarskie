@@ -9,16 +9,15 @@ import {
   ExternalLink,
   RotateCcw,
   SkipForward,
-  Upload,
   XCircle,
 } from "lucide-react";
 import {
   cancelCsvImportAction,
-  commitCsvImportAction,
   toggleImportRowAction,
 } from "@/lib/actions/import-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ImportProgressRunner } from "@/components/imports/import-progress-runner";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db";
 import {
@@ -37,7 +36,7 @@ const rowLabels: Record<string, string> = {
 
 const batchLabels: Record<string, string> = {
   PENDING: "Oczekuje",
-  VALIDATING: "Walidacja",
+  VALIDATING: "Importowanie",
   READY: "Gotowy do zatwierdzenia",
   COMPLETED: "Zakończony",
   FAILED: "Zatrzymany",
@@ -79,7 +78,7 @@ export default async function ImportPreviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ ok?: string; error?: string; status?: string }>;
+  searchParams: Promise<{ ok?: string; error?: string; status?: string; run?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -98,6 +97,13 @@ export default async function ImportPreviewPage({
   const visibleRows = selectedStatus
     ? batch.rows.filter((row) => row.status === selectedStatus)
     : batch.rows;
+  const processedRows = counts.IMPORTED + counts.DUPLICATE + counts.INVALID + counts.SKIPPED;
+  const progressPercent = batch.rowsTotal > 0
+    ? Math.min(100, Math.round((processedRows / batch.rowsTotal) * 100))
+    : 0;
+  const importCanContinue = (batch.status === "READY" || batch.status === "VALIDATING")
+    && counts.VALID > 0;
+  const importInProgress = batch.status === "VALIDATING" && query.run === "1";
 
   return (
     <div className="grid gap-5">
@@ -130,7 +136,7 @@ export default async function ImportPreviewPage({
             <Download size={16} />Pobierz raport CSV
           </Link>
 
-          {batch.status === "READY" ? (
+          {batch.status === "READY" && counts.IMPORTED === 0 ? (
             <form action={cancelCsvImportAction}>
               <input type="hidden" name="batchId" value={batch.id} />
               <Button type="submit" variant="danger">
@@ -139,13 +145,14 @@ export default async function ImportPreviewPage({
             </form>
           ) : null}
 
-          {batch.status === "READY" && counts.VALID > 0 ? (
-            <form action={commitCsvImportAction}>
-              <input type="hidden" name="batchId" value={batch.id} />
-              <Button type="submit">
-                <Upload size={16} className="mr-2" />{batch.source?.type === "API" ? "Zastosuj" : "Zaimportuj"} {counts.VALID} poprawnych
-              </Button>
-            </form>
+          {importCanContinue ? (
+            <ImportProgressRunner
+              batchId={batch.id}
+              remaining={counts.VALID}
+              actionLabel={batch.source?.type === "API" ? "Zastosuj" : "Zaimportuj"}
+              autoRun={importInProgress}
+              resume={processedRows > 0 || batch.status === "VALIDATING"}
+            />
           ) : null}
         </div>
       </div>
@@ -169,6 +176,32 @@ export default async function ImportPreviewPage({
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
           <XCircle size={18} />Nie udało się wykonać tej operacji dla obecnego stanu importu.
         </div>
+      ) : null}
+
+      {importCanContinue && (processedRows > 0 || batch.status === "VALIDATING") ? (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-medium">
+                {importInProgress ? "Importowanie spotkań" : "Import został przerwany i można go bezpiecznie wznowić"}
+              </div>
+              <div className="mt-1 text-sm text-zinc-500">
+                Import jest wykonywany w małych partiach, aby strona nie przekraczała limitu czasu Vercela.
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-semibold">{progressPercent}%</div>
+              <div className="text-xs text-zinc-500">{processedRows} z {batch.rowsTotal}</div>
+            </div>
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-emerald-600 transition-[width] duration-300"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <div className="mt-2 text-xs text-zinc-500">Pozostało: {counts.VALID} spotkań.</div>
+        </Card>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

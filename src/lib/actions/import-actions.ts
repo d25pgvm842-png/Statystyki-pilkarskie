@@ -23,6 +23,7 @@ import {
 import { valueToString } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const IMPORT_COMMIT_CHUNK_SIZE = 20;
 
 const statMapping = {
   home_corners: "homeCorners",
@@ -140,6 +141,28 @@ async function syncBatchCounters(client: Prisma.TransactionClient | typeof prism
     },
   });
   return counts;
+}
+
+async function updateBatchCommitStatus(batchId: string) {
+  return prisma.$transaction(async (tx) => {
+    const counts = await syncBatchCounters(tx, batchId);
+    const hasRemaining = counts.VALID > 0;
+    const completed = counts.IMPORTED > 0 || counts.DUPLICATE > 0 || counts.SKIPPED > 0;
+
+    await tx.importBatch.update({
+      where: { id: batchId },
+      data: {
+        status: hasRemaining
+          ? ImportStatus.VALIDATING
+          : completed
+            ? ImportStatus.COMPLETED
+            : ImportStatus.FAILED,
+        completedAt: hasRemaining ? null : new Date(),
+      },
+    });
+
+    return counts;
+  });
 }
 
 function duplicateKey(data: Pick<StoredImportRow, "homeTeamId" | "awayTeamId" | "kickoffAt">) {
@@ -466,12 +489,25 @@ export async function commitCsvImportAction(formData: FormData) {
       rows: {
         where: { status: ImportRowStatus.VALID },
         orderBy: { rowNumber: "asc" },
+        take: IMPORT_COMMIT_CHUNK_SIZE,
       },
     },
   });
 
-  if (!batch || batch.status !== ImportStatus.READY) redirect(`/imports/${batchId}?error=state`);
-  if (!batch.rows.length) redirect(`/imports/${batchId}?error=empty`);
+  if (!batch || (batch.status !== ImportStatus.READY && batch.status !== ImportStatus.VALIDATING)) redirect(`/imports/${batchId}?error=state`);
+  if (!batch.rows.length) {
+    const counts = await updateBatchCommitStatus(batch.id);
+    revalidatePath("/imports");
+    revalidatePath(`/imports/${batch.id}`);
+    redirect(`/imports/${batch.id}?ok=${counts.IMPORTED > 0 ? "completed" : "processed"}`);
+  }
+
+  if (batch.status === ImportStatus.READY) {
+    await prisma.importBatch.update({
+      where: { id: batch.id },
+      data: { status: ImportStatus.VALIDATING, completedAt: null },
+    });
+  }
 
   for (const row of batch.rows) {
     const data = storedRow(row.rawData);
@@ -722,18 +758,7 @@ export async function commitCsvImportAction(formData: FormData) {
     }
   }
 
-  const counts = await prisma.$transaction(async (tx) => {
-    const result = await syncBatchCounters(tx, batch.id);
-    const completed = result.IMPORTED > 0 || result.DUPLICATE > 0 || result.SKIPPED > 0;
-    await tx.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        status: completed ? ImportStatus.COMPLETED : ImportStatus.FAILED,
-        completedAt: new Date(),
-      },
-    });
-    return result;
-  });
+  const counts = await updateBatchCommitStatus(batch.id);
 
   revalidatePath("/");
   revalidatePath("/matches");
@@ -744,5 +769,8 @@ export async function commitCsvImportAction(formData: FormData) {
   revalidatePath("/automation");
   revalidatePath("/imports");
   revalidatePath(`/imports/${batch.id}`);
+  if (counts.VALID > 0) {
+    redirect(`/imports/${batch.id}?run=1`);
+  }
   redirect(`/imports/${batch.id}?ok=${counts.IMPORTED > 0 ? "completed" : "processed"}`);
 }

@@ -19,7 +19,7 @@ const errorMessages: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   PENDING: "Oczekuje",
-  VALIDATING: "Walidacja",
+  VALIDATING: "Importowanie",
   READY: "Gotowy",
   COMPLETED: "Zakończony",
   FAILED: "Błąd",
@@ -27,7 +27,7 @@ const statusLabels: Record<string, string> = {
 
 function statusBadge(status: string) {
   if (status === "COMPLETED") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
-  if (status === "READY") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  if (status === "READY" || status === "VALIDATING") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
   if (status === "FAILED") return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
   return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
 }
