@@ -6,6 +6,7 @@ import {
   Database,
   FileUp,
   GitCompareArrows,
+  Info,
   Scale,
   ShieldCheck,
   Trophy,
@@ -13,8 +14,11 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  buildDataQualityContext,
+  countMissingExpectedReferees,
   findDataQualityIssues,
   hasCompleteRequiredStats,
+  type QualityMatch,
 } from "@/lib/data/data-quality";
 import { prisma } from "@/lib/db";
 
@@ -41,10 +45,13 @@ export default async function DashboardPage() {
     prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
 
-  const issues = findDataQualityIssues(allMatches);
-  const missingReferee = allMatches.filter((match) => match.status === "FINISHED" && !match.refereeId).length;
-  const finished = allMatches.filter((match) => match.status === "FINISHED");
-  const complete = finished.filter(hasCompleteRequiredStats).length;
+  const qualityMatches: QualityMatch[] = allMatches;
+  const qualityContext = buildDataQualityContext(qualityMatches);
+  const issues = findDataQualityIssues(qualityMatches, qualityContext);
+  const missingReferee = countMissingExpectedReferees(qualityMatches, qualityContext);
+  const sourceLimitations = qualityContext.profiles.filter((profile) => profile.limitations.length > 0).length;
+  const finished = qualityMatches.filter((match) => match.status === "FINISHED");
+  const complete = finished.filter((match) => hasCompleteRequiredStats(match, qualityContext)).length;
   const completeness = finished.length ? Math.round((complete / finished.length) * 100) : 0;
 
   const cards = [
@@ -53,7 +60,7 @@ export default async function DashboardPage() {
     { label: "Sezony", value: seasonCount, icon: CalendarDays, href: "/settings" },
     { label: "Drużyny", value: teamCount, icon: Users, href: "/teams" },
     { label: "Kompletność", value: `${completeness}%`, icon: CheckCircle2, href: "/data-quality" },
-    { label: "Bez sędziego", value: missingReferee, icon: Scale, href: "/data-quality" },
+    { label: "Brak sędziego", value: missingReferee, icon: Scale, href: "/data-quality?type=BRAK_SĘDZIEGO" },
   ] as const;
 
   return (
@@ -113,7 +120,7 @@ export default async function DashboardPage() {
         <div className="grid gap-5">
           <Card>
             <CardHeader><CardTitle>Kontrola danych</CardTitle></CardHeader>
-            <CardContent>
+            <CardContent className="grid gap-2">
               {issues.length ? (
                 <Link href="/data-quality" className="flex items-center gap-3 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
                   <AlertTriangle />
@@ -122,6 +129,11 @@ export default async function DashboardPage() {
               ) : (
                 <div className="flex items-center gap-2 text-sm text-emerald-600"><ShieldCheck size={18} />Brak wykrytych problemów.</div>
               )}
+              {sourceLimitations > 0 ? (
+                <Link href="/data-quality" className="flex items-center gap-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
+                  <Info size={16} />{sourceLimitations} profili źródeł ma znane ograniczenia pokrycia
+                </Link>
+              ) : null}
             </CardContent>
           </Card>
 
