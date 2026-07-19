@@ -18,6 +18,11 @@ import {
   type ExternalTeamCandidate,
 } from "@/lib/imports/external-preview";
 import { preferIncoming, stableMatchStatus } from "@/lib/imports/api-update-safety";
+import {
+  persistExternalFieldDecisions,
+  prepareExternalFieldDecisions,
+  recordInitialFieldObservations,
+} from "@/lib/imports/field-provenance";
 import { valueToString } from "@/lib/utils";
 
 const statFields: Array<keyof ExternalStats> = [
@@ -353,6 +358,7 @@ async function updateExistingMatch(input: {
   homeTeamId: string;
   awayTeamId: string;
   refereeId: string | null;
+  sourceId: string;
 }) {
   const locked = new Set(input.match.overrides.map((override) => override.fieldName));
   const oldValues: Record<string, unknown> = {
@@ -366,19 +372,35 @@ async function updateExistingMatch(input: {
     refereeId: input.match.refereeId,
     ...Object.fromEntries(statFields.map((field) => [field, input.match.stats?.[field] ?? null])),
   };
+  const tracked = await prepareExternalFieldDecisions({
+    tx: input.tx,
+    matchId: input.match.id,
+    primarySourceId: input.match.dataSourceId,
+    sourceId: input.sourceId,
+    lockedFields: locked,
+    currentValues: {
+      homeScore: input.match.homeScore,
+      awayScore: input.match.awayScore,
+      refereeId: input.match.refereeId,
+      ...Object.fromEntries(statFields.map((field) => [field, input.match.stats?.[field] ?? null])),
+    },
+    incomingValues: {
+      homeScore: input.data.homeScore,
+      awayScore: input.data.awayScore,
+      refereeId: input.refereeId,
+      ...Object.fromEntries(statFields.map((field) => [field, input.data.stats[field]])),
+    },
+  });
   const incomingValues: Record<string, unknown> = {
     round: preferIncoming(input.match.round, input.data.round),
     kickoffAt: new Date(input.data.kickoffAt),
     homeTeamId: input.homeTeamId,
     awayTeamId: input.awayTeamId,
-    homeScore: preferIncoming(input.match.homeScore, input.data.homeScore),
-    awayScore: preferIncoming(input.match.awayScore, input.data.awayScore),
+    homeScore: tracked.nextValues.homeScore,
+    awayScore: tracked.nextValues.awayScore,
     status: stableMatchStatus(input.match.status, input.data.status) as MatchStatus,
-    refereeId: preferIncoming(input.match.refereeId, input.refereeId),
-    ...Object.fromEntries(statFields.map((field) => [
-      field,
-      preferIncoming(input.match.stats?.[field] ?? null, input.data.stats[field]),
-    ])),
+    refereeId: tracked.nextValues.refereeId,
+    ...Object.fromEntries(statFields.map((field) => [field, tracked.nextValues[field]])),
   };
 
   const importedAt = new Date();
@@ -418,6 +440,16 @@ async function updateExistingMatch(input: {
     },
   });
 
+  await persistExternalFieldDecisions({
+    tx: input.tx,
+    matchId: input.match.id,
+    sourceId: input.sourceId,
+    importRowId: input.rowId,
+    sourceExternalId: input.data.sourceExternalId,
+    sourceUpdatedAt: input.data.sourceUpdatedAt ? new Date(input.data.sourceUpdatedAt) : importedAt,
+    decisions: tracked.decisions,
+  });
+
   const changedFields = Object.keys(incomingValues).filter(
     (field) => !locked.has(field)
       && valueToString(oldValues[field]) !== valueToString(incomingValues[field]),
@@ -448,6 +480,7 @@ async function updateExistingMatch(input: {
     messages.push("Mecz zmienił się po przygotowaniu raportu; użyto aktualnego stanu bazy.");
   }
   if (locked.size) messages.push(`Zachowano ${locked.size} ręcznych korekt.`);
+  if (tracked.conflictCount) messages.push(`Wykryto ${tracked.conflictCount} konfliktów źródeł; zachowano dotychczasowe wartości.`);
 
   const nextData: ExternalPreparedRowData = {
     ...input.data,
@@ -566,6 +599,7 @@ async function commitOnce(input: {
         homeTeamId: homeTeam.id,
         awayTeamId: awayTeam.id,
         refereeId: referee?.id ?? null,
+        sourceId: source.id,
       });
     }
 
@@ -594,6 +628,21 @@ async function commitOnce(input: {
           : importedAt,
         note: resolvedData.note,
         stats: { create: resolvedData.stats },
+      },
+    });
+
+    await recordInitialFieldObservations({
+      tx,
+      matchId: match.id,
+      sourceId: source.id,
+      importRowId: row.id,
+      sourceExternalId: resolvedData.sourceExternalId,
+      sourceUpdatedAt: resolvedData.sourceUpdatedAt ? new Date(resolvedData.sourceUpdatedAt) : importedAt,
+      values: {
+        homeScore: resolvedData.homeScore,
+        awayScore: resolvedData.awayScore,
+        refereeId: resolvedData.refereeId,
+        ...resolvedData.stats,
       },
     });
 

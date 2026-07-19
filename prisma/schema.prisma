@@ -178,6 +178,7 @@ model DataSource {
   active       Boolean        @default(true)
   matches      Match[]
   imports      ImportBatch[]
+  fieldObservations MatchFieldObservation[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -205,6 +206,7 @@ model Match {
   stats               MatchStats?
   overrides           DataOverride[]
   analysisNotes MatchAnalysisNote[]
+  fieldObservations MatchFieldObservation[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -280,6 +282,7 @@ model ImportRow {
   rawData    Json
   errors     Json?
   import     ImportBatch     @relation(fields: [importId], references: [id], onDelete: Cascade)
+  fieldObservations MatchFieldObservation[]
   createdAt  DateTime        @default(now())
 
   @@unique([importId, rowNumber])
@@ -365,6 +368,31 @@ model CurrentDataSyncLock {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model MatchFieldObservation {
+  id                String     @id @default(cuid())
+  matchId           String
+  dataSourceId      String
+  importRowId       String?
+  fieldName         String
+  value             String
+  active            Boolean    @default(false)
+  conflict          Boolean    @default(false)
+  ignoredByOverride Boolean    @default(false)
+  sourceExternalId  String?
+  sourceUpdatedAt   DateTime?
+  observedAt        DateTime   @default(now())
+  match             Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  dataSource        DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Restrict)
+  importRow         ImportRow? @relation(fields: [importRowId], references: [id], onDelete: SetNull)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@unique([matchId, fieldName, dataSourceId])
+  @@index([matchId, conflict, active])
+  @@index([dataSourceId, fieldName])
+}
+
 model ExternalMapping {
   id           String             @id @default(cuid())
   providerCode String

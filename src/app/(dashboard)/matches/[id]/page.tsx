@@ -36,6 +36,10 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
         dataSource: true,
         stats: true,
         overrides: { include: { createdBy: { select: { name: true } } }, orderBy: { createdAt: "desc" } },
+        fieldObservations: {
+          include: { dataSource: true },
+          orderBy: [{ fieldName: "asc" }, { active: "desc" }, { conflict: "desc" }, { observedAt: "desc" }],
+        },
       },
     }),
     prisma.auditLog.findMany({
@@ -61,6 +65,12 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
       }
     }
   }
+
+  const observationRefereeIds = match.fieldObservations
+    .filter((item) => item.fieldName === "refereeId")
+    .map((item) => item.value)
+    .filter(Boolean);
+  observationRefereeIds.forEach((value) => refereeIds.add(value));
 
   const [seasons, teams, referees] = await Promise.all([
     seasonIds.size
@@ -89,6 +99,19 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
     return value;
   }
 
+  function observationValue(fieldName: string, value: string) {
+    if (fieldName === "refereeId") return refereeNames.get(value) ?? value;
+    return value;
+  }
+
+  const observationsByField = new Map<string, typeof match.fieldObservations>();
+  for (const observation of match.fieldObservations) {
+    const current = observationsByField.get(observation.fieldName) ?? [];
+    current.push(observation);
+    observationsByField.set(observation.fieldName, current);
+  }
+  const conflictCount = match.fieldObservations.filter((item) => item.conflict).length;
+
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -100,6 +123,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Badge className={MATCH_STATUS_CLASSES[match.status]}>{MATCH_STATUS_LABELS[match.status]}</Badge>
               <span className="text-sm text-zinc-500">{match.season.league.name} · {match.season.name}</span>
+              {conflictCount ? <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{conflictCount} konfliktów źródeł</Badge> : null}
             </div>
             <h1 className="text-2xl font-semibold">{match.homeTeam.name} – {match.awayTeam.name}</h1>
             <div className="mt-1 text-3xl font-bold tracking-tight">{displayScore(match.homeScore, match.awayScore)}</div>
@@ -113,12 +137,13 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
         </Link>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Card className="p-4"><CalendarDays size={18} className="mb-2 text-emerald-600" /><div className="text-xs text-zinc-500">Termin</div><div className="mt-1 font-medium">{new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium", timeStyle: "short" }).format(match.kickoffAt)}</div></Card>
         <Card className="p-4"><Clock3 size={18} className="mb-2 text-emerald-600" /><div className="text-xs text-zinc-500">Kolejka</div><div className="mt-1 font-medium">{match.round ?? "Nie podano"}</div></Card>
         <Card className="p-4"><Scale size={18} className="mb-2 text-emerald-600" /><div className="text-xs text-zinc-500">Sędzia</div><div className="mt-1 font-medium">{match.referee?.name ?? "Nie przypisano"}</div></Card>
-        <Card className="p-4"><Database size={18} className="mb-2 text-emerald-600" /><div className="text-xs text-zinc-500">Źródło</div><div className="mt-1 font-medium">{match.dataSource?.name ?? "Brak"}</div></Card>
+        <Card className="p-4"><Database size={18} className="mb-2 text-emerald-600" /><div className="text-xs text-zinc-500">Źródło główne</div><div className="mt-1 font-medium">{match.dataSource?.name ?? "Brak"}</div></Card>
         <Card className="p-4"><ShieldCheck size={18} className="mb-2 text-emerald-600" /><div className="text-xs text-zinc-500">Ręczne korekty</div><div className="mt-1 font-medium">{match.overrides.length}</div></Card>
+        <Card className="p-4"><AlertTriangleIcon /><div className="text-xs text-zinc-500">Konflikty źródeł</div><div className="mt-1 font-medium">{conflictCount}</div></Card>
       </div>
 
       <Card className="overflow-hidden">
@@ -135,6 +160,41 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
                 const total = typeof home === "number" && typeof away === "number" ? home + away : null;
                 return <tr key={definition.key}><td className="p-3 font-medium">{definition.label}</td><td className="p-3 text-lg font-semibold">{statValue(home)}</td><td className="p-3 text-lg font-semibold">{statValue(away)}</td><td className="p-3 text-lg font-semibold text-emerald-600">{statValue(total)}</td></tr>;
               })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle>Pochodzenie danych i konflikty źródeł</CardTitle>
+          <p className="text-sm text-zinc-500">
+            Aktywne źródło zasila wartość w meczu. Źródło wspierające potwierdza tę samą wartość. Konflikt nie nadpisuje danych automatycznie.
+          </p>
+        </CardHeader>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/60">
+              <tr><th className="p-3">Pole</th><th className="p-3">Źródło</th><th className="p-3">Wartość źródłowa</th><th className="p-3">Stan</th><th className="p-3">Odczyt</th></tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {[...observationsByField.entries()].flatMap(([fieldName, observations]) =>
+                observations.map((observation) => (
+                  <tr key={observation.id}>
+                    <td className="p-3 font-medium">{MATCH_FIELD_LABELS[fieldName] ?? fieldName}</td>
+                    <td className="p-3">{observation.dataSource.name}</td>
+                    <td className="p-3">{observationValue(fieldName, observation.value)}</td>
+                    <td className="p-3">
+                      {observation.ignoredByOverride ? <Badge className="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">pominięte przez korektę</Badge>
+                        : observation.conflict ? <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">konflikt</Badge>
+                        : observation.active ? <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">aktywne</Badge>
+                        : <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">wspierające</Badge>}
+                    </td>
+                    <td className="p-3 text-zinc-500">{new Intl.DateTimeFormat("pl-PL", { dateStyle: "short", timeStyle: "short" }).format(observation.observedAt)}</td>
+                  </tr>
+                )),
+              )}
+              {!match.fieldObservations.length ? <tr><td colSpan={5} className="p-8 text-center text-zinc-500">Brak zarejestrowanego pochodzenia pól.</td></tr> : null}
             </tbody>
           </table>
         </CardContent>
@@ -196,5 +256,15 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function AlertTriangleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="mb-2 size-[18px] text-amber-600" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.3 2.9 1.8 17.5a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
   );
 }
