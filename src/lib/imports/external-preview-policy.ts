@@ -1,6 +1,10 @@
 export type PreviewTeamCandidate = {
   name: string;
   existingId: string | null;
+  matchedName?: string | null;
+  matchScore?: number | null;
+  matchReason?: string | null;
+  ambiguousMatches?: Array<{ id: string; name: string; score: number }>;
   requiresMembership: boolean;
   requiresMapping: boolean;
 };
@@ -31,7 +35,13 @@ export function buildExternalPreviewActions(input: {
   if (!input.leagueMappingExists) actions.push("Utworzy mapowanie ligi");
 
   for (const team of [input.home, input.away]) {
-    if (!team.existingId) actions.push(`Utworzy drużynę: ${team.name}`);
+    if (team.ambiguousMatches?.length) {
+      actions.push(`Wymaga ręcznego mapowania drużyny: ${team.name}`);
+    } else if (!team.existingId) {
+      actions.push(`Utworzy drużynę: ${team.name}`);
+    } else if (team.matchedName && team.matchedName !== team.name) {
+      actions.push(`Połączy z istniejącą drużyną: ${team.matchedName}`);
+    }
     if (team.requiresMembership) actions.push(`Przypisze drużynę do sezonu: ${team.name}`);
     if (team.requiresMapping) actions.push(`Utworzy mapowanie drużyny: ${team.name}`);
   }

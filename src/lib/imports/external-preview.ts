@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { listExternalMappings } from "@/lib/external-mappings";
 import { normalizeLookup } from "@/lib/imports/csv";
 import { buildExternalPreviewActions } from "@/lib/imports/external-preview-policy";
+import { resolveUniqueTeamIdentity } from "@/lib/teams/team-identity";
 
 export type ExternalStats = {
   homeCorners: number | null;
@@ -54,6 +55,10 @@ export type ExternalTeamCandidate = {
   shortName: string | null;
   country: string;
   existingId: string | null;
+  matchedName?: string | null;
+  matchScore?: number | null;
+  matchReason?: string | null;
+  ambiguousMatches?: Array<{ id: string; name: string; score: number }>;
   requiresMembership: boolean;
   requiresMapping: boolean;
 };
@@ -124,6 +129,8 @@ type TeamRecord = {
   shortName: string | null;
   slug: string;
   country: string;
+  createdAt: Date;
+  historicalSeasonCount?: number;
 };
 
 type ExistingMatch = {
@@ -135,26 +142,6 @@ type ExistingMatch = {
   updatedAt: Date;
 };
 
-const TEAM_KEY_ALIASES: Record<string, string> = {
-  "atletico madrid": "atletico",
-  "atletico madryt": "atletico",
-  "bayern munchen": "bayern",
-  "bayern monachium": "bayern",
-  "fc internazionale milano": "inter",
-  internazionale: "inter",
-  "inter milan": "inter",
-  "olympique de marseille": "olympique marsylia",
-};
-
-function teamKey(value: string) {
-  const normalized = normalizeLookup(value)
-    .replace(/\b(football club|futbol club|fc|afc|cf|ac|as|sc|club|calcio)\b/g, " ")
-    .replace(/\b04\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return TEAM_KEY_ALIASES[normalized] ?? normalized;
-}
-
 function isoDay(date: Date) {
   return date.toISOString().slice(0, 10);
 }
@@ -164,6 +151,9 @@ function teamCandidate(input: {
   seasonCountry: string;
   mappedId: string | null;
   matchedTeam: TeamRecord | null;
+  matchScore?: number | null;
+  matchReason?: string | null;
+  ambiguousMatches?: Array<{ id: string; name: string; score: number }>;
   membershipIds: Set<string>;
 }) {
   const existingId = input.mappedId ?? input.matchedTeam?.id ?? null;
@@ -173,6 +163,10 @@ function teamCandidate(input: {
     shortName: input.definition.shortName?.trim() || null,
     country: input.definition.country?.trim() || input.seasonCountry,
     existingId,
+    matchedName: input.matchedTeam?.name ?? null,
+    matchScore: input.matchScore ?? null,
+    matchReason: input.matchReason ?? null,
+    ambiguousMatches: input.ambiguousMatches ?? [],
     requiresMembership: !existingId || !input.membershipIds.has(existingId),
     requiresMapping: !input.mappedId || input.mappedId !== existingId,
   } satisfies ExternalTeamCandidate;
@@ -193,18 +187,22 @@ export async function prepareExternalImportBatch(input: {
 
   if (!matches.length) throw new Error("Źródło nie zwróciło żadnych poprawnych meczów.");
 
-  const [source, mappings, allTeams, memberships, allReferees, refereeMemberships] = await Promise.all([
+  const [source, mappings, allTeams, memberships, leagueMemberships, allReferees, refereeMemberships] = await Promise.all([
     prisma.dataSource.findUnique({
       where: { providerCode: input.providerCode },
       select: { id: true },
     }),
     listExternalMappings({ providerCode: input.providerCode, active: true }),
     prisma.team.findMany({
-      select: { id: true, name: true, shortName: true, slug: true, country: true },
+      select: { id: true, name: true, shortName: true, slug: true, country: true, createdAt: true },
     }),
     prisma.seasonTeam.findMany({
       where: { seasonId: input.season.id },
       select: { teamId: true },
+    }),
+    prisma.seasonTeam.findMany({
+      where: { season: { leagueId: input.season.leagueId } },
+      select: { teamId: true, season: { select: { startsAt: true } } },
     }),
     prisma.referee.findMany({ select: { id: true, name: true, slug: true } }),
     prisma.refereeSeason.findMany({
@@ -214,13 +212,21 @@ export async function prepareExternalImportBatch(input: {
   ]);
 
   const teamById = new Map(allTeams.map((team) => [team.id, team]));
-  const teamByKey = new Map<string, TeamRecord>();
-  for (const team of allTeams) {
-    teamByKey.set(teamKey(team.name), team);
-    if (team.shortName) teamByKey.set(teamKey(team.shortName), team);
-    teamByKey.set(teamKey(team.slug), team);
+  const leagueHistoryByTeam = new Map<string, number>();
+  for (const membership of leagueMemberships) {
+    const historical = membership.season.startsAt < input.season.startsAt ? 1 : 0;
+    leagueHistoryByTeam.set(
+      membership.teamId,
+      (leagueHistoryByTeam.get(membership.teamId) ?? 0) + historical,
+    );
   }
-
+  const leagueTeamIds = new Set(leagueMemberships.map((item) => item.teamId));
+  const identityCandidates = allTeams
+    .filter((team) => leagueTeamIds.has(team.id))
+    .map((team) => ({
+      ...team,
+      historicalSeasonCount: leagueHistoryByTeam.get(team.id) ?? 0,
+    }));
   const teamMembershipIds = new Set(memberships.map((item) => item.teamId));
   const refereeMembershipIds = new Set(refereeMemberships.map((item) => item.refereeId));
   const refereeByKey = new Map(
@@ -244,12 +250,25 @@ export async function prepareExternalImportBatch(input: {
       if (candidateByExternal.has(definition.externalId)) continue;
       const mappedId = internalByExternal.get(definition.externalId) ?? null;
       const mappedTeam = mappedId ? teamById.get(mappedId) ?? null : null;
-      const matchedTeam = mappedTeam ?? teamByKey.get(teamKey(definition.name)) ?? null;
+      const resolution = mappedTeam
+        ? { match: { team: mappedTeam, score: 100, reason: "Istniejące mapowanie źródła" }, ambiguous: [] }
+        : resolveUniqueTeamIdentity(
+            { id: definition.externalId, name: definition.name, shortName: definition.shortName },
+            identityCandidates,
+          );
+      const matchedTeam = mappedTeam ?? resolution.match?.team ?? null;
       candidateByExternal.set(definition.externalId, teamCandidate({
         definition,
         seasonCountry: input.season.league.country,
         mappedId: mappedTeam?.id ?? null,
         matchedTeam,
+        matchScore: resolution.match?.score ?? null,
+        matchReason: resolution.match?.reason ?? null,
+        ambiguousMatches: resolution.ambiguous.map((item) => ({
+          id: item.team.id,
+          name: item.team.name,
+          score: item.score,
+        })),
         membershipIds: teamMembershipIds,
       }));
     }
@@ -306,6 +325,14 @@ export async function prepareExternalImportBatch(input: {
     const errors: string[] = [];
     const home = candidateByExternal.get(match.home.externalId)!;
     const away = candidateByExternal.get(match.away.externalId)!;
+
+    for (const [label, candidate] of [["gospodarza", home], ["gościa", away]] as const) {
+      if (candidate.ambiguousMatches?.length) {
+        errors.push(
+          `Niejednoznaczne dopasowanie ${label} ${candidate.name}: ${candidate.ambiguousMatches.map((item) => item.name).join(", ")}.`,
+        );
+      }
+    }
 
     if (home.existingId && away.existingId && home.existingId === away.existingId) {
       errors.push("Gospodarz i gość wskazują tę samą drużynę.");

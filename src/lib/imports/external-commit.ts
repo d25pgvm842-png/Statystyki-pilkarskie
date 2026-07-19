@@ -24,6 +24,7 @@ import {
   prepareExternalFieldDecisions,
   recordInitialFieldObservations,
 } from "@/lib/imports/field-provenance";
+import { resolveUniqueTeamIdentity } from "@/lib/teams/team-identity";
 import { valueToString } from "@/lib/utils";
 
 const statFields: Array<keyof ExternalStats> = [
@@ -148,24 +149,51 @@ async function resolveTeam(input: {
   }
 
   if (!team && candidate) {
-    const normalized = normalizeLookup(candidate.name);
-    const allTeams = await tx.team.findMany({
-      select: {
-        id: true,
-        name: true,
-        shortName: true,
-        slug: true,
-        country: true,
-        active: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const season = await tx.season.findUnique({
+      where: { id: seasonId },
+      select: { leagueId: true, startsAt: true },
     });
-    team = allTeams.find((item) =>
-      normalizeLookup(item.name) === normalized
-      || normalizeLookup(item.shortName ?? "") === normalized
-      || normalizeLookup(item.slug) === normalized
-    ) ?? null;
+    if (!season) throw new Error("Sezon nie istnieje podczas rozwiązywania drużyny.");
+
+    const [leagueTeams, leagueMemberships] = await Promise.all([
+      tx.team.findMany({
+        where: { seasonMemberships: { some: { season: { leagueId: season.leagueId } } } },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          slug: true,
+          country: true,
+          active: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      tx.seasonTeam.findMany({
+        where: { season: { leagueId: season.leagueId } },
+        select: { teamId: true, season: { select: { startsAt: true } } },
+      }),
+    ]);
+
+    const historyByTeam = new Map<string, number>();
+    for (const membership of leagueMemberships) {
+      const historical = membership.season.startsAt < season.startsAt ? 1 : 0;
+      historyByTeam.set(membership.teamId, (historyByTeam.get(membership.teamId) ?? 0) + historical);
+    }
+    const candidates = leagueTeams.map((item) => ({
+      ...item,
+      historicalSeasonCount: historyByTeam.get(item.id) ?? 0,
+    }));
+    const resolution = resolveUniqueTeamIdentity(
+      { id: candidate.externalId, name: candidate.name, shortName: candidate.shortName },
+      candidates,
+    );
+    if (resolution.ambiguous.length) {
+      throw new Error(
+        `Niejednoznaczne dopasowanie drużyny ${candidate.name}: ${resolution.ambiguous.map((item) => item.team.name).join(", ")}.`,
+      );
+    }
+    team = resolution.match?.team ?? null;
   }
 
   if (!team && candidate) {

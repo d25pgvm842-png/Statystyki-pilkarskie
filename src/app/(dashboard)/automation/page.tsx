@@ -146,6 +146,18 @@ export default async function AutomationPage({
         </CardContent>
       </Card>
 
+      <Card className="border-amber-200 dark:border-amber-900">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="flex items-center gap-2 font-medium"><Link2 size={17} />Kontrola duplikatów drużyn</div>
+            <div className="text-sm text-zinc-500">Bezpieczne mapowanie różnych nazw klubu i atomowe scalanie powiązań.</div>
+          </div>
+          <Link href="/automation/team-duplicates" className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
+            Sprawdź duplikaty
+          </Link>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <KeyRound size={18} className={configured ? "text-emerald-600" : "text-red-600"} />
