@@ -24,6 +24,13 @@ function number(value: number | null | undefined) {
   return value === null || value === undefined ? "" : value.toFixed(2);
 }
 
+function projectionQualityLabel(value: string) {
+  if (value === "FULL") return "pełna";
+  if (value === "ONE_SIDED_FOR") return "jednostronna: tylko wykonuje";
+  if (value === "ONE_SIDED_AGAINST") return "jednostronna: tylko rywal oddaje";
+  return "brak danych";
+}
+
 export async function GET(request: Request) {
   const user = await requireUser();
   const url = new URL(request.url);
@@ -51,7 +58,7 @@ export async function GET(request: Request) {
       number(market.projectedAway),
       number(market.projectedTotal),
       `${market.homeSample}/${market.awaySample}`,
-      `gospodarz wykonuje ${number(market.homeFor)}; gość oddaje ${number(market.awayAgainst)}; gość wykonuje ${number(market.awayFor)}; gospodarz oddaje ${number(market.homeAgainst)}`,
+      `gospodarz: ${projectionQualityLabel(market.homeProjectionQuality)} (n ${market.homeForSample}/${market.awayAgainstSample}); gość: ${projectionQualityLabel(market.awayProjectionQuality)} (n ${market.awayForSample}/${market.homeAgainstSample}); gospodarz wykonuje ${number(market.homeFor)}; gość oddaje ${number(market.awayAgainst)}; gość wykonuje ${number(market.awayFor)}; gospodarz oddaje ${number(market.homeAgainst)}`,
     ]);
     for (const line of market.lines) {
       rows.push([
@@ -82,9 +89,11 @@ export async function GET(request: Request) {
 
   if (analysis.match.referee) {
     rows.push(["sędzia", "", "mecze", "", "", analysis.refereeSummary.count, "", analysis.match.referee.name]);
-    rows.push(["sędzia", "kartki", "średnia", "", "", number(analysis.refereeSummary.cards), analysis.refereeSummary.count, ""]);
-    rows.push(["sędzia", "faule", "średnia", "", "", number(analysis.refereeSummary.fouls), analysis.refereeSummary.count, ""]);
-    rows.push(["sędzia", "rożne", "średnia", "", "", number(analysis.refereeSummary.corners), analysis.refereeSummary.count, ""]);
+    rows.push(["sędzia", "kartki", "średnia", "", "", number(analysis.refereeSummary.cards), analysis.refereeSummary.cardsSample, "komplet żółtych i czerwonych"]);
+    rows.push(["sędzia", "żółte", "średnia", "", "", number(analysis.refereeSummary.yellowCards), analysis.refereeSummary.yellowCardsSample, ""]);
+    rows.push(["sędzia", "czerwone", "średnia", "", "", number(analysis.refereeSummary.redCards), analysis.refereeSummary.redCardsSample, ""]);
+    rows.push(["sędzia", "faule", "średnia", "", "", number(analysis.refereeSummary.fouls), analysis.refereeSummary.foulsSample, ""]);
+    rows.push(["sędzia", "rożne", "średnia", "", "", number(analysis.refereeSummary.corners), analysis.refereeSummary.cornersSample, ""]);
   }
 
   for (const line of analysis.customLineRows) {

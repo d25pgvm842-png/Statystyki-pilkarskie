@@ -70,6 +70,10 @@ test("projekcja łączy produkcję gospodarza z wartościami oddawanymi przez go
   assert.equal(corners?.projectedHome, 6.5);
   assert.equal(corners?.projectedAway, 3.5);
   assert.equal(corners?.projectedTotal, 10);
+  assert.equal(corners?.homeProjectionQuality, "FULL");
+  assert.equal(corners?.awayProjectionQuality, "FULL");
+  assert.equal(corners?.homeForSample, 2);
+  assert.equal(corners?.awayAgainstSample, 2);
   assert.equal(corners?.lines.find((line) => line.threshold === 9.5)?.overRate, 75);
 });
 
@@ -102,19 +106,67 @@ test("brak statystyki nie jest zamieniany na zero w projekcji", () => {
   const corners = projections.find((item) => item.key === "corners");
   assert.equal(corners?.projectedHome, 5);
   assert.equal(corners?.projectedAway, 4);
+  assert.equal(corners?.projectedTotal, null);
+  assert.equal(corners?.homeProjectionQuality, "ONE_SIDED_AGAINST");
+  assert.equal(corners?.awayProjectionQuality, "ONE_SIDED_AGAINST");
   assert.equal(corners?.homeSample, 0);
   assert.equal(corners?.awaySample, 0);
 });
 
-test("profil sędziego liczy średnie tylko z kompletnych par wartości", () => {
+test("profil sędziego pokazuje osobną próbę dla każdej statystyki", () => {
   const matches = [
-    match({ id: "1", homeTeamId: "A", awayTeamId: "B", homeYellowCards: 2, awayYellowCards: 4, homeFouls: 10, awayFouls: 12 }),
-    match({ id: "2", homeTeamId: "C", awayTeamId: "D", homeYellowCards: 1, awayYellowCards: 3, homeFouls: 8, awayFouls: 10 }),
+    match({
+      id: "1",
+      homeTeamId: "A",
+      awayTeamId: "B",
+      homeYellowCards: 2,
+      awayYellowCards: 1,
+      homeRedCards: 0,
+      awayRedCards: 0,
+      homeFouls: 10,
+      awayFouls: 11,
+      homeCorners: 5,
+      awayCorners: 4,
+    }),
+    match({
+      id: "2",
+      homeTeamId: "C",
+      awayTeamId: "D",
+      homeYellowCards: 1,
+      awayYellowCards: 3,
+      homeRedCards: null,
+      awayRedCards: 0,
+      homeFouls: 8,
+      awayFouls: 10,
+      homeCorners: null,
+      awayCorners: 6,
+    }),
+    match({
+      id: "3",
+      homeTeamId: "E",
+      awayTeamId: "F",
+      homeYellowCards: null,
+      awayYellowCards: 2,
+      homeRedCards: 1,
+      awayRedCards: 0,
+      homeFouls: null,
+      awayFouls: 9,
+      homeCorners: 6,
+      awayCorners: 7,
+    }),
   ];
   const summary = summarizeReferee(matches);
-  assert.equal(summary.yellowCards, 5);
-  assert.equal(summary.cards, 5);
-  assert.equal(summary.fouls, 20);
+  assert.equal(summary.count, 3);
+  assert.equal(summary.yellowCards, 3.5);
+  assert.equal(summary.yellowCardsSample, 2);
+  assert.equal(summary.redCards, 0.5);
+  assert.equal(summary.redCardsSample, 2);
+  assert.equal(summary.cards, 3);
+  assert.equal(summary.cardsSample, 1);
+  assert.equal(summary.fouls, 19.5);
+  assert.equal(summary.foulsSample, 2);
+  assert.equal(summary.corners, 11);
+  assert.equal(summary.cornersSample, 2);
 });
 
 test("własna linia drużynowa zwraca osobne pokrycie gospodarza i gościa", () => {

@@ -185,6 +185,8 @@ export async function loadMatchAnalysis(input: {
   const weakMarkets = projections.filter(
     (projection) =>
       projection.projectedTotal === null
+      || projection.homeProjectionQuality !== "FULL"
+      || projection.awayProjectionQuality !== "FULL"
       || projection.homeSample < 3
       || projection.awaySample < 3,
   );

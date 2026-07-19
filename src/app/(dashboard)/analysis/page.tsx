@@ -50,6 +50,19 @@ function formLabel(form: { wins: number; draws: number; losses: number }) {
   return `${form.wins}Z · ${form.draws}R · ${form.losses}P`;
 }
 
+function projectionQualityLabel(value: string) {
+  if (value === "FULL") return "pełna";
+  if (value === "ONE_SIDED_FOR") return "jednostronna: tylko wykonuje";
+  if (value === "ONE_SIDED_AGAINST") return "jednostronna: tylko rywal oddaje";
+  return "brak danych";
+}
+
+function projectionQualityClass(value: string) {
+  if (value === "FULL") return "text-emerald-600";
+  if (value === "MISSING") return "text-zinc-500";
+  return "text-amber-600";
+}
+
 export default async function MatchAnalysisPage({
   searchParams,
 }: {
@@ -200,7 +213,7 @@ export default async function MatchAnalysisPage({
               <div>
                 <div className="font-medium">Ograniczona próba dla części rynków</div>
                 <div className="mt-1 text-xs">
-                  {analysis.weakMarkets.map((market) => market.shortLabel).join(", ")}. Projekcje z próbą poniżej 3 meczów traktuj jako orientacyjne.
+                  {analysis.weakMarkets.map((market) => market.shortLabel).join(", ")}. Projekcje jednostronne albo z próbą poniżej 3 meczów traktuj wyłącznie jako orientacyjne.
                 </div>
               </div>
             </div>
@@ -225,14 +238,28 @@ export default async function MatchAnalysisPage({
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {analysis.projections.map((row) => (
                     <tr key={row.key}>
-                      <td className="p-3 font-medium">{row.label}<div className="text-xs text-zinc-500">próba {row.homeSample}/{row.awaySample}</div></td>
-                      <td className="p-3">{formatNumber(row.homeFor)}</td>
-                      <td className="p-3">{formatNumber(row.awayAgainst)}</td>
-                      <td className="p-3 font-semibold text-emerald-600">{formatNumber(row.projectedHome)}</td>
-                      <td className="p-3">{formatNumber(row.awayFor)}</td>
-                      <td className="p-3">{formatNumber(row.homeAgainst)}</td>
-                      <td className="p-3 font-semibold text-emerald-600">{formatNumber(row.projectedAway)}</td>
-                      <td className="p-3 text-lg font-semibold">{formatNumber(row.projectedTotal)}</td>
+                      <td className="p-3 font-medium">
+                        {row.label}
+                        <div className="text-xs text-zinc-500">
+                          n składników: {row.homeForSample}/{row.awayAgainstSample} · {row.awayForSample}/{row.homeAgainstSample}
+                        </div>
+                      </td>
+                      <td className="p-3">{formatNumber(row.homeFor)}<div className="text-xs text-zinc-500">n={row.homeForSample}</div></td>
+                      <td className="p-3">{formatNumber(row.awayAgainst)}<div className="text-xs text-zinc-500">n={row.awayAgainstSample}</div></td>
+                      <td className="p-3">
+                        <div className={`font-semibold ${projectionQualityClass(row.homeProjectionQuality)}`}>{formatNumber(row.projectedHome)}</div>
+                        <div className={`text-xs ${projectionQualityClass(row.homeProjectionQuality)}`}>{projectionQualityLabel(row.homeProjectionQuality)}</div>
+                      </td>
+                      <td className="p-3">{formatNumber(row.awayFor)}<div className="text-xs text-zinc-500">n={row.awayForSample}</div></td>
+                      <td className="p-3">{formatNumber(row.homeAgainst)}<div className="text-xs text-zinc-500">n={row.homeAgainstSample}</div></td>
+                      <td className="p-3">
+                        <div className={`font-semibold ${projectionQualityClass(row.awayProjectionQuality)}`}>{formatNumber(row.projectedAway)}</div>
+                        <div className={`text-xs ${projectionQualityClass(row.awayProjectionQuality)}`}>{projectionQualityLabel(row.awayProjectionQuality)}</div>
+                      </td>
+                      <td className="p-3 text-lg font-semibold">
+                        {formatNumber(row.projectedTotal)}
+                        {row.projectedTotal === null ? <div className="text-xs font-normal text-amber-600">wymaga dwóch pełnych prognoz</div> : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -290,11 +317,12 @@ export default async function MatchAnalysisPage({
               <CardContent>
                 {analysis.match.referee ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="sm:col-span-2"><div className="text-xl font-semibold">{analysis.match.referee.name}</div><div className="text-sm text-zinc-500">{analysis.refereeSummary.count} wcześniejszych meczów w bazie</div></div>
-                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Kartki</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.cards)}</div></div>
-                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Żółte</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.yellowCards)}</div></div>
-                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Faule</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.fouls)}</div></div>
-                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Rożne</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.corners)}</div></div>
+                    <div className="sm:col-span-2"><div className="text-xl font-semibold">{analysis.match.referee.name}</div><div className="text-sm text-zinc-500">{analysis.refereeSummary.count} wcześniejszych meczów w bazie · każda średnia ma własną próbę</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Kartki łącznie</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.cards)}</div><div className="text-xs text-zinc-500">n={analysis.refereeSummary.cardsSample}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Żółte</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.yellowCards)}</div><div className="text-xs text-zinc-500">n={analysis.refereeSummary.yellowCardsSample}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Czerwone</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.redCards)}</div><div className="text-xs text-zinc-500">n={analysis.refereeSummary.redCardsSample}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Faule</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.fouls)}</div><div className="text-xs text-zinc-500">n={analysis.refereeSummary.foulsSample}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Rożne</div><div className="mt-1 text-2xl font-semibold">{formatNumber(analysis.refereeSummary.corners)}</div><div className="text-xs text-zinc-500">n={analysis.refereeSummary.cornersSample}</div></div>
                   </div>
                 ) : (
                   <div className="py-8 text-center text-sm text-zinc-500">Źródło nie przypisało sędziego do tego meczu.</div>

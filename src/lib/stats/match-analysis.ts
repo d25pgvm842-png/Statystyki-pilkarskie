@@ -14,6 +14,12 @@ export type AnalysisStatField =
 
 export type AnalysisStats = Partial<Record<AnalysisStatField, number | null>>;
 
+export type ProjectionQuality =
+  | "FULL"
+  | "ONE_SIDED_FOR"
+  | "ONE_SIDED_AGAINST"
+  | "MISSING";
+
 export type AnalysisMatch = {
   id: string;
   kickoffAt: Date | string;
@@ -46,6 +52,12 @@ export type MarketProjection = {
   projectedHome: number | null;
   projectedAway: number | null;
   projectedTotal: number | null;
+  homeProjectionQuality: ProjectionQuality;
+  awayProjectionQuality: ProjectionQuality;
+  homeForSample: number;
+  homeAgainstSample: number;
+  awayForSample: number;
+  awayAgainstSample: number;
   homeSample: number;
   awaySample: number;
   totalSample: number;
@@ -55,10 +67,15 @@ export type MarketProjection = {
 export type RefereeSummary = {
   count: number;
   yellowCards: number | null;
+  yellowCardsSample: number;
   redCards: number | null;
+  redCardsSample: number;
   cards: number | null;
+  cardsSample: number;
   fouls: number | null;
+  foulsSample: number;
   corners: number | null;
+  cornersSample: number;
 };
 
 function average(values: number[]) {
@@ -66,9 +83,20 @@ function average(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function mean(values: Array<number | null>) {
-  const valid = values.filter((value): value is number => typeof value === "number");
-  return average(valid);
+function projection(
+  forValue: number | null,
+  againstValue: number | null,
+): { value: number | null; quality: ProjectionQuality } {
+  if (forValue !== null && againstValue !== null) {
+    return { value: (forValue + againstValue) / 2, quality: "FULL" };
+  }
+  if (forValue !== null) {
+    return { value: forValue, quality: "ONE_SIDED_FOR" };
+  }
+  if (againstValue !== null) {
+    return { value: againstValue, quality: "ONE_SIDED_AGAINST" };
+  }
+  return { value: null, quality: "MISSING" };
 }
 
 function teamRole(match: AnalysisMatch, teamId: string) {
@@ -154,11 +182,14 @@ export function buildMarketProjections(input: {
     const homeAgainst = average(home.opponent);
     const awayFor = average(away.team);
     const awayAgainst = average(away.opponent);
-    const projectedHome = mean([homeFor, awayAgainst]);
-    const projectedAway = mean([awayFor, homeAgainst]);
+    const homeProjection = projection(homeFor, awayAgainst);
+    const awayProjection = projection(awayFor, homeAgainst);
     const projectedTotal =
-      projectedHome !== null && projectedAway !== null
-        ? projectedHome + projectedAway
+      homeProjection.quality === "FULL"
+      && awayProjection.quality === "FULL"
+      && homeProjection.value !== null
+      && awayProjection.value !== null
+        ? homeProjection.value + awayProjection.value
         : null;
     const totalValues = extractTrendValues(combined, {
       statKey: definition.key,
@@ -175,11 +206,17 @@ export function buildMarketProjections(input: {
       homeAgainst,
       awayFor,
       awayAgainst,
-      projectedHome,
-      projectedAway,
+      projectedHome: homeProjection.value,
+      projectedAway: awayProjection.value,
       projectedTotal,
-      homeSample: Math.min(home.team.length, home.opponent.length),
-      awaySample: Math.min(away.team.length, away.opponent.length),
+      homeProjectionQuality: homeProjection.quality,
+      awayProjectionQuality: awayProjection.quality,
+      homeForSample: home.team.length,
+      homeAgainstSample: home.opponent.length,
+      awayForSample: away.team.length,
+      awayAgainstSample: away.opponent.length,
+      homeSample: Math.min(home.team.length, away.opponent.length),
+      awaySample: Math.min(away.team.length, home.opponent.length),
       totalSample: totalValues.length,
       lines: presetLines(definition.key, "MATCH_TOTAL").map((line) =>
         analyzeTrendLine(totalValues, line),
@@ -191,23 +228,34 @@ export function buildMarketProjections(input: {
 export function summarizeReferee(matches: AnalysisMatch[]): RefereeSummary {
   const yellow: number[] = [];
   const red: number[] = [];
+  const cards: number[] = [];
   const fouls: number[] = [];
   const corners: number[] = [];
 
   for (const match of matches) {
     const stats = match.stats;
     if (!stats) continue;
-    if (
+
+    const hasYellow =
       typeof stats.homeYellowCards === "number"
-      && typeof stats.awayYellowCards === "number"
-    ) {
-      yellow.push(stats.homeYellowCards + stats.awayYellowCards);
-    }
-    if (
+      && typeof stats.awayYellowCards === "number";
+    const hasRed =
       typeof stats.homeRedCards === "number"
-      && typeof stats.awayRedCards === "number"
-    ) {
-      red.push(stats.homeRedCards + stats.awayRedCards);
+      && typeof stats.awayRedCards === "number";
+
+    if (hasYellow) {
+      yellow.push(stats.homeYellowCards! + stats.awayYellowCards!);
+    }
+    if (hasRed) {
+      red.push(stats.homeRedCards! + stats.awayRedCards!);
+    }
+    if (hasYellow && hasRed) {
+      cards.push(
+        stats.homeYellowCards!
+        + stats.awayYellowCards!
+        + stats.homeRedCards!
+        + stats.awayRedCards!,
+      );
     }
     if (typeof stats.homeFouls === "number" && typeof stats.awayFouls === "number") {
       fouls.push(stats.homeFouls + stats.awayFouls);
@@ -220,18 +268,18 @@ export function summarizeReferee(matches: AnalysisMatch[]): RefereeSummary {
     }
   }
 
-  const yellowCards = average(yellow);
-  const redCards = average(red);
   return {
     count: matches.length,
-    yellowCards,
-    redCards,
-    cards:
-      yellowCards !== null && redCards !== null
-        ? yellowCards + redCards
-        : yellowCards ?? redCards,
+    yellowCards: average(yellow),
+    yellowCardsSample: yellow.length,
+    redCards: average(red),
+    redCardsSample: red.length,
+    cards: average(cards),
+    cardsSample: cards.length,
     fouls: average(fouls),
+    foulsSample: fouls.length,
     corners: average(corners),
+    cornersSample: corners.length,
   };
 }
 
