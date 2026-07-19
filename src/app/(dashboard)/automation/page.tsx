@@ -134,6 +134,18 @@ export default async function AutomationPage({
         </CardContent>
       </Card>
 
+      <Card className="border-blue-200 dark:border-blue-900">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="flex items-center gap-2 font-medium"><RefreshCw size={17} />Bieżące aktualizacje wszystkich lig</div>
+            <div className="text-sm text-zinc-500">Pobieranie liga po lidze, rzeczywisty postęp i osobne raporty do weryfikacji.</div>
+          </div>
+          <Link href="/automation/current-data" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            Otwórz centrum
+          </Link>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <KeyRound size={18} className={configured ? "text-emerald-600" : "text-red-600"} />

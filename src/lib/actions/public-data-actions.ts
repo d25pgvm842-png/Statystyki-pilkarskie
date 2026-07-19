@@ -896,11 +896,31 @@ async function loadFootballDataUkMatches(season: SeasonWithLeague) {
   };
 }
 
-export async function prepareCurrentPublicImportAction(formData: FormData) {
-  const user = await requireAdmin();
-  const seasonId = text(formData, "seasonId");
-  const fromValue = text(formData, "from");
-  const toValue = text(formData, "to");
+type CurrentPublicPreparationCode =
+  | "public-provider"
+  | "public-empty"
+  | "public-range"
+  | "public-season";
+
+class CurrentPublicPreparationError extends Error {
+  constructor(
+    readonly code: CurrentPublicPreparationCode,
+    message: string,
+    readonly detail?: string,
+  ) {
+    super(message);
+    this.name = "CurrentPublicPreparationError";
+  }
+}
+
+export async function prepareCurrentPublicBatch(input: {
+  userId: string;
+  seasonId: string;
+  fromValue: string;
+  toValue: string;
+  batchNamePrefix?: string;
+}) {
+  const { userId, seasonId, fromValue, toValue, batchNamePrefix } = input;
   const from = toUtcDate(fromValue);
   const to = toUtcDate(toValue);
 
@@ -910,14 +930,22 @@ export async function prepareCurrentPublicImportAction(formData: FormData) {
     || to < from
     || daysBetween(from, to) > MAX_CURRENT_RANGE_DAYS
   ) {
-    redirect(publicErrorHref("public-range", undefined, seasonId));
+    throw new CurrentPublicPreparationError(
+      "public-range",
+      "Zakres danych bieżących musi mieć od 1 do 180 dni.",
+    );
   }
 
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
     include: { league: true },
   });
-  if (!season) redirect(publicErrorHref("public-season"));
+  if (!season) {
+    throw new CurrentPublicPreparationError(
+      "public-season",
+      "Nie udało się ustalić ligi lub sezonu.",
+    );
+  }
 
   const typedSeason = season as SeasonWithLeague;
   const attempts: string[] = [];
@@ -967,26 +995,65 @@ export async function prepareCurrentPublicImportAction(formData: FormData) {
   }
 
   if (!loaded) {
-    redirect(
-      publicErrorHref(
-        "public-empty",
-        attempts.join(" | ") || "Żadne darmowe źródło nie zwróciło danych.",
-        seasonId,
-      ),
+    const detail = attempts.join(" | ") || "Żadne darmowe źródło nie zwróciło danych.";
+    throw new CurrentPublicPreparationError(
+      "public-empty",
+      "Darmowe źródła nie zwróciły meczów dla wybranego okresu.",
+      detail,
     );
   }
 
   try {
+    const prefix = batchNamePrefix?.trim();
+    const batchName = [
+      prefix,
+      loaded.providerName,
+      typedSeason.league.name,
+      season.name,
+      `${fromValue}–${toValue}`,
+    ].filter(Boolean).join(" · ");
+
     const batchId = await preparePublicBatch({
-      userId: user.id,
+      userId,
       season: typedSeason,
       providerCode: loaded.providerCode,
       providerName: loaded.providerName,
       externalLeagueId: loaded.externalLeagueId,
-      batchName: `${loaded.providerName} · ${typedSeason.league.name} · ${fromValue}–${toValue}`,
+      batchName,
       matches: loaded.matches,
     });
-    redirect(`/imports/${batchId}`);
+
+    return {
+      batchId,
+      providerCode: loaded.providerCode,
+      providerName: loaded.providerName,
+      matchCount: loaded.matches.length,
+      seasonId: season.id,
+      seasonName: season.name,
+      leagueName: typedSeason.league.name,
+    };
+  } catch (error) {
+    if (error instanceof CurrentPublicPreparationError) throw error;
+    throw new CurrentPublicPreparationError(
+      "public-provider",
+      "Nie udało się przygotować raportu z danych publicznych.",
+      errorDetail(error),
+    );
+  }
+}
+
+export async function prepareCurrentPublicImportAction(formData: FormData) {
+  const user = await requireAdmin();
+  const seasonId = text(formData, "seasonId");
+
+  try {
+    const prepared = await prepareCurrentPublicBatch({
+      userId: user.id,
+      seasonId,
+      fromValue: text(formData, "from"),
+      toValue: text(formData, "to"),
+    });
+    redirect(`/imports/${prepared.batchId}`);
   } catch (error) {
     if (
       error
@@ -996,13 +1063,10 @@ export async function prepareCurrentPublicImportAction(formData: FormData) {
     ) {
       throw error;
     }
-    redirect(
-      publicErrorHref(
-        "public-provider",
-        errorDetail(error),
-        seasonId,
-      ),
-    );
+    if (error instanceof CurrentPublicPreparationError) {
+      redirect(publicErrorHref(error.code, error.detail ?? error.message, seasonId));
+    }
+    redirect(publicErrorHref("public-provider", errorDetail(error), seasonId));
   }
 }
 

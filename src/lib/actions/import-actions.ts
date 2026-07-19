@@ -20,6 +20,7 @@ import {
   parseNullableInteger,
   type CsvRecord,
 } from "@/lib/imports/csv";
+import { preferIncoming, stableMatchStatus } from "@/lib/imports/api-update-safety";
 import { valueToString } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -550,15 +551,20 @@ export async function commitCsvImportAction(formData: FormData) {
             ...Object.fromEntries(Object.values(statMapping).map((field) => [field, apiExisting.stats?.[field] ?? null])),
           };
           const incomingValues: Record<string, unknown> = {
-            round: data.round,
+            round: preferIncoming(apiExisting.round, data.round),
             kickoffAt: new Date(data.kickoffAt),
             homeTeamId: data.homeTeamId,
             awayTeamId: data.awayTeamId,
-            homeScore: data.homeScore,
-            awayScore: data.awayScore,
-            status: data.status,
-            refereeId: data.refereeId,
-            ...data.stats,
+            homeScore: preferIncoming(apiExisting.homeScore, data.homeScore),
+            awayScore: preferIncoming(apiExisting.awayScore, data.awayScore),
+            status: stableMatchStatus(apiExisting.status, data.status) as MatchStatus,
+            refereeId: preferIncoming(apiExisting.refereeId, data.refereeId),
+            ...Object.fromEntries(
+              Object.values(statMapping).map((field) => [
+                field,
+                preferIncoming(apiExisting.stats?.[field] ?? null, data.stats[field]),
+              ]),
+            ),
           };
 
           const matchUpdate: Prisma.MatchUpdateInput = {
@@ -581,7 +587,7 @@ export async function commitCsvImportAction(formData: FormData) {
 
           const statsUpdate: Record<string, number | null> = {};
           for (const field of Object.values(statMapping)) {
-            if (!locked.has(field)) statsUpdate[field] = data.stats[field];
+            if (!locked.has(field)) statsUpdate[field] = incomingValues[field] as number | null;
           }
 
           await tx.match.update({
