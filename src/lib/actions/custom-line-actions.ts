@@ -14,10 +14,21 @@ function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
-function returnPath(formData: FormData, flag: string) {
+function safeReturnTo(formData: FormData) {
   const value = text(formData, "returnTo");
-  const safe = value.startsWith("/trends") ? value : "/trends";
+  if (value.startsWith("/analysis")) return value;
+  if (value.startsWith("/trends")) return value;
+  return "/trends";
+}
+
+function returnPath(formData: FormData, flag: string) {
+  const safe = safeReturnTo(formData);
   return `${safe}${safe.includes("?") ? "&" : "?"}${flag}=1`;
+}
+
+function revalidateAnalysisPages() {
+  revalidatePath("/trends");
+  revalidatePath("/analysis");
 }
 
 export async function createCustomLineAction(formData: FormData) {
@@ -44,7 +55,7 @@ export async function createCustomLineAction(formData: FormData) {
     },
   });
 
-  revalidatePath("/trends");
+  revalidateAnalysisPages();
   redirect(returnPath(formData, "created"));
 }
 
@@ -55,7 +66,7 @@ export async function toggleCustomLineAction(formData: FormData) {
   if (!line) throw new Error("Linia nie istnieje.");
 
   await prisma.customLine.update({ where: { id }, data: { active: !line.active } });
-  revalidatePath("/trends");
+  revalidateAnalysisPages();
   redirect(returnPath(formData, "updated"));
 }
 
@@ -63,6 +74,6 @@ export async function deleteCustomLineAction(formData: FormData) {
   const user = await requireUser();
   const id = text(formData, "id");
   await prisma.customLine.deleteMany({ where: { id, userId: user.id } });
-  revalidatePath("/trends");
+  revalidateAnalysisPages();
   redirect(returnPath(formData, "deleted"));
 }

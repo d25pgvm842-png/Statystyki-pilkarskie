@@ -1,12 +1,12 @@
 import Link from "next/link";
 import {
+  Activity,
   BarChart3,
   Bot,
   DatabaseZap,
   FileUp,
   Gauge,
   HardDriveDownload,
-  GitCompareArrows,
   LogOut,
   PlusCircle,
   Scale,
@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 const links = [
   { href: "/", label: "Dashboard", icon: Gauge },
   { href: "/matches", label: "Mecze", icon: DatabaseZap },
-  { href: "/comparison", label: "Porównanie", icon: GitCompareArrows },
+  { href: "/analysis", label: "Analiza", icon: Activity },
   { href: "/trends", label: "Trendy", icon: TrendingUp },
   { href: "/teams", label: "Drużyny", icon: Users },
   { href: "/referees", label: "Sędziowie", icon: Scale },
