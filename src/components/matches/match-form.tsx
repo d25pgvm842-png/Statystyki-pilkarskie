@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { MatchActionState } from "@/lib/actions/match-actions";
+import { kickoffInputValue } from "@/lib/matches/date-time";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
@@ -51,13 +52,6 @@ function SubmitButton({ editing }: { editing: boolean }) {
   return <Button type="submit" disabled={pending}>{pending ? "Zapisywanie..." : editing ? "Zapisz zmiany" : "Dodaj mecz"}</Button>;
 }
 
-function localDateTime(iso?: string) {
-  if (!iso) return "";
-  const date = new Date(iso);
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
-}
-
 export function MatchForm({ seasons, action, initial }: { seasons: SeasonOption[]; action: MatchAction; initial?: InitialMatch }) {
   const [state, formAction] = useActionState(action, {});
   const [seasonId, setSeasonId] = useState(initial?.seasonId ?? seasons[0]?.id ?? "");
@@ -93,7 +87,7 @@ export function MatchForm({ seasons, action, initial }: { seasons: SeasonOption[
             </Select>
           </Field>
           <Field label="Kolejka" error={error("round")}><Input name="round" type="number" min="1" defaultValue={initial?.round ?? ""} /></Field>
-          <Field label="Data i godzina" error={error("kickoffAt")}><Input name="kickoffAt" type="datetime-local" defaultValue={localDateTime(initial?.kickoffAt)} required /></Field>
+          <Field label="Data i godzina" error={error("kickoffAt")}><Input name="kickoffAt" type="datetime-local" defaultValue={kickoffInputValue(initial?.kickoffAt)} required /></Field>
           <Field label="Status" error={error("status")}>
             <Select name="status" defaultValue={initial?.status ?? "SCHEDULED"}>
               <option value="SCHEDULED">Zaplanowany</option><option value="LIVE">Trwa</option><option value="FINISHED">Zakończony</option><option value="POSTPONED">Przełożony</option><option value="CANCELLED">Odwołany</option>
