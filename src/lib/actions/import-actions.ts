@@ -481,14 +481,21 @@ export async function commitCsvImportAction(formData: FormData) {
       : `csv:${batch.id}:${row.id}`;
 
     try {
-      const apiExisting = isApi && batch.sourceId && sourceExternalId
-        ? await prisma.match.findFirst({
-            where: {
-              dataSourceId: batch.sourceId,
-              sourceExternalId,
-            },
-            include: { stats: true, overrides: true },
-          })
+      const apiExisting = isApi
+        ? data.existingMatchId
+          ? await prisma.match.findUnique({
+              where: { id: data.existingMatchId },
+              include: { stats: true, overrides: true },
+            })
+          : batch.sourceId && sourceExternalId
+            ? await prisma.match.findFirst({
+                where: {
+                  dataSourceId: batch.sourceId,
+                  sourceExternalId,
+                },
+                include: { stats: true, overrides: true },
+              })
+            : null
         : null;
 
       if (apiExisting) {
