@@ -1,5 +1,10 @@
-import { prepareCurrentPublicBatch } from "@/lib/actions/public-data-actions";
+import { CurrentDataSyncTrigger } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/db";
+import {
+  CurrentDataSyncBusyError,
+  prepareTrackedCurrentPublicBatch,
+  selectNextCurrentSyncSeason,
+} from "@/lib/current-data/sync-coordinator";
 
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
@@ -27,27 +32,10 @@ async function run(request: Request) {
     return Response.json({ error: "Brak aktywnego administratora." }, { status: 503 });
   }
 
-  const seasons = await prisma.season.findMany({
-    where: { active: true, league: { active: true } },
-    include: { league: true },
-    orderBy: { league: { name: "asc" } },
-  });
-  if (!seasons.length) {
+  const selected = await selectNextCurrentSyncSeason();
+  if (!selected) {
     return Response.json({ ok: true, skipped: true, reason: "Brak aktywnych sezonów." });
   }
-
-  const freshness = await Promise.all(
-    seasons.map(async (season) => {
-      const latest = await prisma.match.findFirst({
-        where: { seasonId: season.id, sourceUpdatedAt: { not: null } },
-        orderBy: { sourceUpdatedAt: "desc" },
-        select: { sourceUpdatedAt: true },
-      });
-      return { season, lastUpdatedAt: latest?.sourceUpdatedAt?.getTime() ?? 0 };
-    }),
-  );
-  freshness.sort((left, right) => left.lastUpdatedAt - right.lastUpdatedAt);
-  const selected = freshness[0]!.season;
 
   const today = new Date();
   const from = new Date(today);
@@ -56,11 +44,12 @@ async function run(request: Request) {
   to.setUTCDate(to.getUTCDate() + 14);
 
   try {
-    const result = await prepareCurrentPublicBatch({
+    const result = await prepareTrackedCurrentPublicBatch({
       userId: admin.id,
       seasonId: selected.id,
       fromValue: dateInput(from),
       toValue: dateInput(to),
+      trigger: CurrentDataSyncTrigger.CRON,
       batchNamePrefix: "CRON aktualizacja",
     });
     return Response.json({
@@ -75,7 +64,7 @@ async function run(request: Request) {
         season: `${selected.league.name} · ${selected.name}`,
         error: error instanceof Error ? error.message : "Nieznany błąd aktualizacji.",
       },
-      { status: 500 },
+      { status: error instanceof CurrentDataSyncBusyError ? 409 : 500 },
     );
   }
 }

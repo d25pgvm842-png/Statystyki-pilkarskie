@@ -28,7 +28,15 @@ export default async function CurrentDataPage() {
 
   const seasons = await prisma.season.findMany({
     where: { active: true, league: { active: true } },
-    include: { league: true, _count: { select: { matches: true } } },
+    include: {
+      league: true,
+      _count: { select: { matches: true } },
+      currentDataSyncRuns: {
+        orderBy: { lastSelectedAt: "desc" },
+        take: 1,
+        select: { lastSelectedAt: true },
+      },
+    },
     orderBy: { league: { name: "asc" } },
   });
 
@@ -68,6 +76,7 @@ export default async function CurrentDataPage() {
     label: `${season.league.name} · ${season.name}`,
     matches: season._count.matches,
     lastUpdatedAt: freshness[index]?.sourceUpdatedAt?.toISOString() ?? null,
+    lastPreparedAt: season.currentDataSyncRuns[0]?.lastSelectedAt.toISOString() ?? null,
   }));
 
   return (
@@ -124,7 +133,7 @@ export default async function CurrentDataPage() {
       </Card>
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
-        Każda liga jest pobierana osobno. Awaria jednego dostawcy nie zatrzymuje pozostałych lig. Raporty nadal wymagają zatwierdzenia przed zapisem do meczów.
+        Powtórne przygotowanie identycznego sezonu i zakresu otworzy istniejący aktywny raport zamiast tworzyć duplikat. Równoległe uruchomienia są blokowane w bazie.
       </div>
     </div>
   );

@@ -64,6 +64,16 @@ enum ExternalEntityType {
   TEAM
 }
 
+enum CurrentDataSyncTrigger {
+  MANUAL
+  CRON
+}
+
+enum CurrentDataSyncRunStatus {
+  PREPARING
+  READY
+  FAILED
+}
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -103,6 +113,7 @@ model Season {
   teams            SeasonTeam[]
   matches          Match[]
   refereeSeasons   RefereeSeason[]
+  currentDataSyncRuns CurrentDataSyncRun[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -254,6 +265,7 @@ model ImportBatch {
   source        DataSource?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   createdBy     User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
   rows          ImportRow[]
+  currentDataSyncRuns CurrentDataSyncRun[]
   createdAt     DateTime     @default(now())
   completedAt   DateTime?
 
@@ -324,6 +336,34 @@ model MatchAnalysisNote {
 
   @@unique([matchId, userId])
   @@index([userId, updatedAt])
+}
+model CurrentDataSyncRun {
+  id             String                   @id @default(cuid())
+  seasonId       String
+  batchId        String?
+  rangeFrom      DateTime
+  rangeTo        DateTime
+  trigger        CurrentDataSyncTrigger
+  status         CurrentDataSyncRunStatus @default(PREPARING)
+  error          String?
+  season         Season                   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  batch          ImportBatch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  startedAt      DateTime                 @default(now())
+  lastSelectedAt DateTime                 @default(now())
+  finishedAt     DateTime?
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([seasonId, lastSelectedAt])
+  @@index([seasonId, rangeFrom, rangeTo])
+  @@index([status, updatedAt])
+}
+
+model CurrentDataSyncLock {
+  id          String   @id
+  lockToken   String?
+  lockedUntil DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 model ExternalMapping {
   id           String             @id @default(cuid())

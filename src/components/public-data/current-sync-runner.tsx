@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CheckCircle2, CloudDownload, LoaderCircle, XCircle } from "lucide-react";
+import { CheckCircle2, CloudDownload, LoaderCircle, RotateCcw, XCircle } from "lucide-react";
 
 type SeasonOption = {
   id: string;
   label: string;
   matches: number;
   lastUpdatedAt: string | null;
+  lastPreparedAt: string | null;
 };
 
 type RunResult = {
@@ -17,6 +18,7 @@ type RunResult = {
   batchId?: string;
   providerName?: string;
   matchCount?: number;
+  reused?: boolean;
   error?: string;
 };
 
@@ -52,6 +54,7 @@ export function CurrentSyncRunner({
         batchId?: string;
         providerName?: string;
         matchCount?: number;
+        reused?: boolean;
         error?: string;
       };
 
@@ -66,6 +69,7 @@ export function CurrentSyncRunner({
         batchId: payload.batchId,
         providerName: payload.providerName,
         matchCount: payload.matchCount,
+        reused: payload.reused,
       };
     } catch (error) {
       setStates((current) => ({ ...current, [seasonId]: "error" }));
@@ -157,12 +161,13 @@ export function CurrentSyncRunner({
 
       <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/60">
               <tr>
                 <th className="p-3">Liga i sezon</th>
                 <th className="p-3">Mecze w bazie</th>
-                <th className="p-3">Ostatnia aktualizacja</th>
+                <th className="p-3">Ostatnia aktualizacja danych</th>
+                <th className="p-3">Ostatnie przygotowanie</th>
                 <th className="p-3">Wynik</th>
                 <th className="p-3" />
               </tr>
@@ -180,11 +185,17 @@ export function CurrentSyncRunner({
                         ? new Intl.DateTimeFormat("pl-PL", { dateStyle: "short", timeStyle: "short" }).format(new Date(season.lastUpdatedAt))
                         : "Brak"}
                     </td>
+                    <td className="p-3 text-zinc-500">
+                      {season.lastPreparedAt
+                        ? new Intl.DateTimeFormat("pl-PL", { dateStyle: "short", timeStyle: "short" }).format(new Date(season.lastPreparedAt))
+                        : "Nigdy"}
+                    </td>
                     <td className="p-3">
                       {state === "running" ? <span className="inline-flex items-center text-blue-600"><LoaderCircle size={15} className="mr-1 animate-spin" />Pobieranie</span> : null}
                       {state === "success" && result?.batchId ? (
                         <Link href={`/imports/${result.batchId}`} className="inline-flex items-center text-emerald-600 hover:underline">
-                          <CheckCircle2 size={15} className="mr-1" />{result.matchCount ?? 0} meczów · {result.providerName}
+                          {result.reused ? <RotateCcw size={15} className="mr-1" /> : <CheckCircle2 size={15} className="mr-1" />}
+                          {result.reused ? "Istniejący raport" : `${result.matchCount ?? 0} meczów`} · {result.providerName}
                         </Link>
                       ) : null}
                       {state === "error" ? <span className="inline-flex items-center text-red-600"><XCircle size={15} className="mr-1" />{result?.error ?? "Błąd"}</span> : null}
@@ -203,7 +214,7 @@ export function CurrentSyncRunner({
                   </tr>
                 );
               })}
-              {!seasons.length ? <tr><td colSpan={5} className="p-10 text-center text-zinc-500">Brak aktywnych sezonów.</td></tr> : null}
+              {!seasons.length ? <tr><td colSpan={6} className="p-10 text-center text-zinc-500">Brak aktywnych sezonów.</td></tr> : null}
             </tbody>
           </table>
         </div>

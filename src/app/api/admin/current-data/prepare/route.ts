@@ -1,5 +1,9 @@
+import { CurrentDataSyncTrigger } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth";
-import { prepareCurrentPublicBatch } from "@/lib/actions/public-data-actions";
+import {
+  CurrentDataSyncBusyError,
+  prepareTrackedCurrentPublicBatch,
+} from "@/lib/current-data/sync-coordinator";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -13,18 +17,19 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json() as Record<string, unknown>;
-    const result = await prepareCurrentPublicBatch({
+    const result = await prepareTrackedCurrentPublicBatch({
       userId: user.id,
       seasonId: text(body.seasonId),
       fromValue: text(body.from),
       toValue: text(body.to),
+      trigger: CurrentDataSyncTrigger.MANUAL,
       batchNamePrefix: "Aktualizacja bieżąca",
     });
     return Response.json(result);
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Nie udało się przygotować aktualizacji." },
-      { status: 400 },
+      { status: error instanceof CurrentDataSyncBusyError ? 409 : 400 },
     );
   }
 }
