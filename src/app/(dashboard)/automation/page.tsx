@@ -49,7 +49,8 @@ export default async function AutomationPage({
     error?: string;
     created?: string;
     linked?: string;
-    total?: string;
+    total?: string;
+    detail?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -108,7 +109,11 @@ export default async function AutomationPage({
 
       {query.error && errorMessages[query.error] ? (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-          <AlertTriangle size={18} />{errorMessages[query.error]}
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <div>{errorMessages[query.error]}</div>
+            {query.detail ? <div className="mt-1 text-xs">{query.detail}</div> : null}
+          </div>
         </div>
       ) : null}
       {query.ok === "teams" ? (

@@ -73,6 +73,22 @@ function apiErrorCode(error: unknown) {
   }
   return "unknown";
 }
+function automationErrorHref(seasonId: string, error: unknown) {
+  const params = new URLSearchParams({
+    seasonId,
+    error: apiErrorCode(error),
+  });
+
+  if (
+    error instanceof ApiFootballError
+    && error.message !== "NO_TEAMS"
+    && error.message !== "NO_FIXTURES"
+  ) {
+    params.set("detail", error.message.slice(0, 500));
+  }
+
+  return `/automation?${params.toString()}`;
+}
 
 async function sourceAndLeagueMapping(season: {
   leagueId: string;
@@ -192,7 +208,7 @@ export async function syncApiFootballTeamsAction(formData: FormData) {
     revalidatePath("/teams");
     successHref = `/automation?seasonId=${season.id}&ok=teams&created=${created}&linked=${linked}&total=${teams.length}`;
   } catch (error) {
-    redirect(`/automation?seasonId=${season.id}&error=${apiErrorCode(error)}`);
+    redirect(automationErrorHref(season.id, error));
   }
   redirect(successHref);
 }
@@ -418,7 +434,7 @@ export async function prepareApiFootballImportAction(formData: FormData) {
     revalidatePath("/imports");
     successBatchId = batch.id;
   } catch (error) {
-    redirect(`/automation?seasonId=${season.id}&error=${apiErrorCode(error)}`);
+    redirect(automationErrorHref(season.id, error));
   }
   redirect(`/imports/${successBatchId}`);
 }
