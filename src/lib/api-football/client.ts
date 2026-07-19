@@ -37,7 +37,7 @@ export async function apiFootballGet<T>(
 ): Promise<T> {
   const apiKey = process.env.API_FOOTBALL_KEY?.trim();
   if (!apiKey) {
-    throw new ApiFootballError("Brak zmiennej API_FOOTBALL_KEY w środowisku Vercela.");
+    throw new ApiFootballError("Brak zmiennej API_FOOTBALL_KEY w Ĺ›rodowisku Vercela.");
   }
 
   const url = new URL(endpoint.replace(/^\//, ""), `${API_BASE_URL}/`);
@@ -54,7 +54,6 @@ export async function apiFootballGet<T>(
     const response = await fetch(url, {
       headers: {
         "x-apisports-key": apiKey,
-        Accept: "application/json",
       },
       cache: "no-store",
       signal: controller.signal,
@@ -63,12 +62,12 @@ export async function apiFootballGet<T>(
     const body = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!response.ok) {
       throw new ApiFootballError(
-        `API-Football zwróciło HTTP ${response.status}.`,
+        `API-Football zwrĂłciĹ‚o HTTP ${response.status}.`,
         response.status,
       );
     }
 
-    if (!body) throw new ApiFootballError("API-Football zwróciło pustą odpowiedź.");
+    if (!body) throw new ApiFootballError("API-Football zwrĂłciĹ‚o pustÄ… odpowiedĹş.");
     const errors = errorMessages(body.errors);
     if (errors.length) throw new ApiFootballError(errors.join("; "));
 
@@ -79,7 +78,7 @@ export async function apiFootballGet<T>(
       throw new ApiFootballError("Przekroczono czas oczekiwania na API-Football.");
     }
     throw new ApiFootballError(
-      error instanceof Error ? error.message : "Nie udało się połączyć z API-Football.",
+      error instanceof Error ? error.message : "Nie udaĹ‚o siÄ™ poĹ‚Ä…czyÄ‡ z API-Football.",
     );
   } finally {
     clearTimeout(timeout);
