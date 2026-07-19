@@ -1,6 +1,6 @@
 import Form from "next/form";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, Trophy } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,25 @@ import { Select } from "@/components/ui/select";
 import { prisma } from "@/lib/db";
 import { formatNumber } from "@/lib/utils";
 import { splitTeamStats } from "@/lib/stats/team-stats";
+import { loadTeamMarketProfile } from "@/lib/data/market-ratings";
+import {
+  marketRatingBucketLabel,
+  type MarketRatingRow,
+  type RatingLookback,
+} from "@/lib/stats/market-ratings";
+
+function ratingCell(row: MarketRatingRow | null) {
+  if (!row) return <span className="text-zinc-500">—</span>;
+  return (
+    <div>
+      <div className="font-semibold">{row.rating ?? "—"}</div>
+      <div className="text-xs text-zinc-500">
+        śr. {formatNumber(row.average)} · n={row.sample}
+      </div>
+      <div className="text-xs text-zinc-500">{marketRatingBucketLabel(row.bucket)}</div>
+    </div>
+  );
+}
 
 export default async function TeamPage({
   params,
@@ -31,17 +50,31 @@ export default async function TeamPage({
     : memberships[0]?.seasonId;
   const lookback = ["5", "10", "20", "all"].includes(lookbackParam ?? "") ? lookbackParam! : "10";
   const take = lookback === "all" ? undefined : Number(lookback);
+  const ratingLookback: RatingLookback = lookback === "all"
+    ? null
+    : Number(lookback) as 5 | 10 | 20;
 
-  const matches = await prisma.match.findMany({
-    where: {
-      status: "FINISHED",
-      ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}),
-      OR: [{ homeTeamId: id }, { awayTeamId: id }],
-    },
-    include: { stats: true, homeTeam: true, awayTeam: true },
-    orderBy: { kickoffAt: "desc" },
-    ...(take ? { take } : {}),
-  });
+  const [matches, ratingProfile] = await Promise.all([
+    prisma.match.findMany({
+      where: {
+        status: "FINISHED",
+        ...(selectedSeasonId ? { seasonId: selectedSeasonId } : {}),
+        OR: [{ homeTeamId: id }, { awayTeamId: id }],
+      },
+      include: { stats: true, homeTeam: true, awayTeam: true },
+      orderBy: { kickoffAt: "desc" },
+      ...(take ? { take } : {}),
+    }),
+    selectedSeasonId
+      ? loadTeamMarketProfile({
+          seasonId: selectedSeasonId,
+          teamId: id,
+          lookback: ratingLookback,
+          minSample: 3,
+        })
+      : Promise.resolve([]),
+  ]);
+
   const observations = matches
     .filter((match) => match.stats)
     .map((match) => ({ isHome: match.homeTeamId === id, stats: match.stats! }));
@@ -65,6 +98,52 @@ export default async function TeamPage({
         <Card className="p-4"><div className="text-xs text-zinc-500">U siebie</div><div className="mt-1 text-3xl font-semibold">{homeMatches}</div><div className="text-xs text-zinc-500">meczów w wybranej próbie</div></Card>
         <Card className="p-4"><div className="text-xs text-zinc-500">Na wyjeździe</div><div className="mt-1 text-3xl font-semibold">{awayMatches}</div><div className="text-xs text-zinc-500">meczów w wybranej próbie</div></Card>
       </div>
+
+      {ratingProfile.length ? (
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Trophy size={18} />Ratingi rynkowe na tle ligi</CardTitle>
+              <p className="mt-1 text-sm text-zinc-500">Rating 0–100 oznacza pozycję percentylową. Minimum do ratingu: 3 obserwacje.</p>
+            </div>
+            <Link
+              href={`/ratings?seasonId=${selectedSeasonId}&lookback=${lookback}&minSample=3`}
+              className="text-sm font-medium text-emerald-600 hover:underline"
+            >
+              Otwórz pełne rankingi
+            </Link>
+          </CardHeader>
+          <CardContent className="overflow-x-auto p-0">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/60">
+                <tr>
+                  <th className="p-3">Rynek</th>
+                  <th className="p-3">Wykonuje</th>
+                  <th className="p-3">Oddaje rywalom</th>
+                  <th className="p-3">Suma w meczu</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {ratingProfile.map((row) => (
+                  <tr key={row.statKey}>
+                    <td className="p-3 font-medium">
+                      <Link
+                        href={`/ratings?seasonId=${selectedSeasonId}&statKey=${row.statKey}&scope=TEAM_FOR&venue=ALL&lookback=${lookback}&minSample=3`}
+                        className="hover:text-emerald-600"
+                      >
+                        {row.label}
+                      </Link>
+                    </td>
+                    <td className="p-3">{ratingCell(row.for)}</td>
+                    <td className="p-3">{ratingCell(row.against)}</td>
+                    <td className="p-3">{ratingCell(row.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {Object.entries(groups).map(([groupKey, stats]) => (
         <Card key={groupKey}>

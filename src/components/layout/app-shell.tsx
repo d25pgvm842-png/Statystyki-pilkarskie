@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   TrendingUp,
+  Trophy,
   Users,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth-actions";
@@ -24,6 +25,7 @@ const links = [
   { href: "/matches", label: "Mecze", icon: DatabaseZap },
   { href: "/analysis", label: "Analiza", icon: Activity },
   { href: "/trends", label: "Trendy", icon: TrendingUp },
+  { href: "/ratings", label: "Rankingi", icon: Trophy },
   { href: "/teams", label: "Drużyny", icon: Users },
   { href: "/referees", label: "Sędziowie", icon: Scale },
   { href: "/imports", label: "Import", icon: FileUp },
