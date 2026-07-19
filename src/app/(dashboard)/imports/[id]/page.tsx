@@ -97,6 +97,10 @@ export default async function ImportPreviewPage({
   const visibleRows = selectedStatus
     ? batch.rows.filter((row) => row.status === selectedStatus)
     : batch.rows;
+  const externalBatch = batch.rows.some((row) => Boolean(importRowData(row.rawData).provider));
+  const providerName = batch.source?.name
+    ?? batch.rows.map((row) => importRowData(row.rawData).providerName).find(Boolean)
+    ?? null;
   const processedRows = counts.IMPORTED + counts.DUPLICATE + counts.INVALID + counts.SKIPPED;
   const progressPercent = batch.rowsTotal > 0
     ? Math.min(100, Math.round((processedRows / batch.rowsTotal) * 100))
@@ -124,7 +128,7 @@ export default async function ImportPreviewPage({
               dateStyle: "medium",
               timeStyle: "short",
             }).format(batch.createdAt)}
-            {batch.source ? ` · ${batch.source.name}` : ""}
+            {providerName ? ` · ${providerName}` : ""}
           </p>
         </div>
 
@@ -149,7 +153,7 @@ export default async function ImportPreviewPage({
             <ImportProgressRunner
               batchId={batch.id}
               remaining={counts.VALID}
-              actionLabel={batch.source?.type === "API" ? "Zastosuj" : "Zaimportuj"}
+              actionLabel={externalBatch || batch.source?.type === "API" ? "Zastosuj" : "Zaimportuj"}
               autoRun={importInProgress}
               resume={processedRows > 0 || batch.status === "VALIDATING"}
             />
@@ -240,7 +244,7 @@ export default async function ImportPreviewPage({
                 <th className="p-3">Wynik</th>
                 <th className="p-3">Sędzia</th>
                 <th className="p-3">Statystyki H:G</th>
-                <th className="p-3">Raport</th>
+                <th className="p-3">Plan i raport</th>
                 <th className="p-3">Akcja</th>
               </tr>
             </thead>
@@ -282,17 +286,24 @@ export default async function ImportPreviewPage({
                       )}
                     </td>
                     <td className="p-3">
-                      {errors.length ? (
-                        <ul className={`grid gap-1 text-xs ${row.status === "DUPLICATE" ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300"}`}>
-                          {errors.map((error) => <li key={error}>• {error}</li>)}
-                        </ul>
-                      ) : row.status === "IMPORTED" ? (
-                        <span className="text-xs text-emerald-700 dark:text-emerald-300">Mecz zapisano lub zaktualizowano i dodano wpis audytowy.</span>
-                      ) : row.status === "SKIPPED" ? (
-                        <span className="text-xs text-zinc-500">Wiersz pominięty ręcznie.</span>
-                      ) : (
-                        <span className="text-xs text-zinc-500">Brak uwag.</span>
-                      )}
+                      <div className="grid gap-2">
+                        {data.previewActions?.length && (row.status === "VALID" || row.status === "SKIPPED") ? (
+                          <ul className="grid gap-1 text-xs text-blue-700 dark:text-blue-300">
+                            {data.previewActions.map((action) => <li key={action}>• {action}</li>)}
+                          </ul>
+                        ) : null}
+                        {errors.length ? (
+                          <ul className={`grid gap-1 text-xs ${row.status === "DUPLICATE" ? "text-amber-700 dark:text-amber-300" : row.status === "IMPORTED" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
+                            {errors.map((error) => <li key={error}>• {error}</li>)}
+                          </ul>
+                        ) : row.status === "IMPORTED" ? (
+                          <span className="text-xs text-emerald-700 dark:text-emerald-300">Mecz zapisano lub zaktualizowano i dodano wpis audytowy.</span>
+                        ) : row.status === "SKIPPED" ? (
+                          <span className="text-xs text-zinc-500">Wiersz pominięty ręcznie.</span>
+                        ) : !data.previewActions?.length ? (
+                          <span className="text-xs text-zinc-500">Brak uwag.</span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="p-3">
                       <div className="flex flex-wrap items-center gap-2">

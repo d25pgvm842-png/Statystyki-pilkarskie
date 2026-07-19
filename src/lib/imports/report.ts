@@ -1,4 +1,8 @@
 import type { Prisma } from "@/generated/prisma/client";
+import type {
+  ExternalRefereeCandidate,
+  ExternalTeamCandidate,
+} from "@/lib/imports/external-preview";
 
 export type ImportReportRow = {
   rowNumber: number;
@@ -8,18 +12,24 @@ export type ImportReportRow = {
 };
 
 type StoredReportData = {
+  provider?: string;
+  providerName?: string;
   round?: number | null;
   kickoffAt?: string;
   homeTeamName?: string;
   awayTeamName?: string;
+  homeTeamCandidate?: ExternalTeamCandidate;
+  awayTeamCandidate?: ExternalTeamCandidate;
   homeScore?: number | null;
   awayScore?: number | null;
   refereeName?: string | null;
+  refereeCandidate?: ExternalRefereeCandidate | null;
   importedMatchId?: string | null;
   duplicateMatchId?: string | null;
   operation?: "CREATE" | "UPDATE";
   existingMatchId?: string | null;
   sourceExternalId?: string | null;
+  previewActions?: string[];
   stats?: {
     homeCorners?: number | null;
     awayCorners?: number | null;
@@ -73,6 +83,8 @@ export function buildImportReportCsv(rows: ImportReportRow[]) {
   const header = [
     "row_number",
     "status",
+    "provider",
+    "planned_actions",
     "round",
     "kickoff_at",
     "home_team",
@@ -104,6 +116,8 @@ export function buildImportReportCsv(rows: ImportReportRow[]) {
     return [
       row.rowNumber,
       row.status,
+      data.providerName ?? data.provider,
+      data.previewActions?.join(" | "),
       data.round,
       data.kickoffAt,
       data.homeTeamName,

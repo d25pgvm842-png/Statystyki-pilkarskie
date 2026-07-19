@@ -2,16 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@/generated/prisma/client";
-import {
-  DataSourceType,
-  ImportRowStatus,
-  ImportStatus,
-  MatchStatus,
-} from "@/generated/prisma/enums";
+import { MatchStatus } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { listExternalMappings, replaceExternalMapping } from "@/lib/external-mappings";
+import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
 import {
   normalizeLookup,
   parseCsv,
@@ -80,31 +74,6 @@ type PublicMatch = {
   note: string;
 };
 
-type StoredPublicRow = {
-  provider: string;
-  operation: "CREATE" | "UPDATE";
-  existingMatchId: string | null;
-  sourceExternalId: string;
-  sourceUpdatedAt: string;
-  seasonId: string;
-  round: number | null;
-  kickoffAt: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  homeTeamName: string;
-  awayTeamName: string;
-  homeScore: number | null;
-  awayScore: number | null;
-  status: MatchStatus;
-  refereeId: string | null;
-  refereeName: string | null;
-  note: string | null;
-  stats: PublicStats;
-  importedMatchId?: string | null;
-  duplicateMatchId?: string | null;
-  importedAt?: string | null;
-};
-
 type SeasonWithLeague = {
   id: string;
   leagueId: string;
@@ -116,28 +85,6 @@ type SeasonWithLeague = {
     code: string;
     country: string;
   };
-};
-
-type TeamRecord = {
-  id: string;
-  name: string;
-  shortName: string | null;
-  slug: string;
-  country: string;
-};
-
-type RefereeRecord = {
-  id: string;
-  name: string;
-  slug: string;
-};
-
-type ExistingMatchRef = {
-  id: string;
-  kickoffAt: Date;
-  homeTeamId: string;
-  awayTeamId: string;
-  sourceExternalId?: string | null;
 };
 
 type LoadedPublicData = {
@@ -181,22 +128,6 @@ function daysBetween(from: Date, to: Date) {
 
 function isoDay(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function slugify(value: string, suffix?: string) {
-  const base = value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ł/g, "l")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  const cleanSuffix = suffix
-    ?.toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 20);
-  return cleanSuffix ? `${base}-${cleanSuffix}` : base;
 }
 
 const TEAM_KEY_ALIASES: Record<string, string> = {
@@ -270,202 +201,6 @@ async function ensureSeason(leagueId: string, startYear: number) {
   return season as SeasonWithLeague;
 }
 
-async function upsertSourceAndLeagueMapping(
-  season: SeasonWithLeague,
-  providerCode: string,
-  providerName: string,
-  externalLeagueId: string,
-) {
-  const source = await prisma.dataSource.upsert({
-    where: { providerCode },
-    update: { name: providerName, type: DataSourceType.API, active: true },
-    create: {
-      name: providerName,
-      providerCode,
-      type: DataSourceType.API,
-      active: true,
-    },
-  });
-
-  await replaceExternalMapping({
-    providerCode,
-    entityType: "LEAGUE",
-    internalId: season.leagueId,
-    externalId: externalLeagueId,
-    externalName: season.league.name,
-    metadata: {
-      season: seasonLabel(seasonStartYear(season.startsAt)),
-    } as Prisma.InputJsonValue,
-    active: true,
-  });
-
-  return source;
-}
-
-async function resolveTeams(
-  season: SeasonWithLeague,
-  providerCode: string,
-  matches: PublicMatch[],
-) {
-  const definitions = new Map<string, PublicTeam>();
-  for (const match of matches) {
-    definitions.set(match.home.externalId, match.home);
-    definitions.set(match.away.externalId, match.away);
-  }
-
-  const allTeams: TeamRecord[] = await prisma.team.findMany({
-    select: {
-      id: true,
-      name: true,
-      shortName: true,
-      slug: true,
-      country: true,
-    },
-  });
-
-  const byKey = new Map<string, TeamRecord>();
-  for (const team of allTeams) {
-    byKey.set(teamKey(team.name), team);
-    if (team.shortName) byKey.set(teamKey(team.shortName), team);
-    byKey.set(teamKey(team.slug), team);
-  }
-
-  const mappings = await listExternalMappings({
-    providerCode,
-    entityType: "TEAM",
-    active: true,
-  });
-  const internalByExternal = new Map(
-    mappings.map((mapping) => [mapping.externalId, mapping.internalId]),
-  );
-
-  const resolved = new Map<string, string>();
-
-  for (const definition of definitions.values()) {
-    let internalId = internalByExternal.get(definition.externalId);
-    let team = internalId
-      ? allTeams.find((candidate) => candidate.id === internalId) ?? null
-      : null;
-
-    if (!team) {
-      team = byKey.get(teamKey(definition.name)) ?? null;
-    }
-
-    if (!team) {
-      const baseSlug = slugify(definition.name);
-      const bySlug = allTeams.find((candidate) => candidate.slug === baseSlug) ?? null;
-      if (bySlug) {
-        team = bySlug;
-      } else {
-        team = await prisma.team.create({
-          data: {
-            name: definition.name,
-            shortName: definition.shortName || null,
-            slug: slugify(definition.name, definition.externalId),
-            country: definition.country || season.league.country,
-            active: true,
-          },
-          select: {
-            id: true,
-            name: true,
-            shortName: true,
-            slug: true,
-            country: true,
-          },
-        });
-        allTeams.push(team);
-      }
-    }
-
-    internalId = team.id;
-    byKey.set(teamKey(definition.name), team);
-    if (definition.shortName) byKey.set(teamKey(definition.shortName), team);
-
-    await prisma.seasonTeam.upsert({
-      where: {
-        seasonId_teamId: {
-          seasonId: season.id,
-          teamId: internalId,
-        },
-      },
-      update: {},
-      create: {
-        seasonId: season.id,
-        teamId: internalId,
-      },
-    });
-
-    await replaceExternalMapping({
-      providerCode,
-      entityType: "TEAM",
-      internalId,
-      externalId: definition.externalId,
-      externalName: definition.name,
-      metadata: {
-        shortName: definition.shortName ?? null,
-        country: definition.country ?? null,
-      } as Prisma.InputJsonValue,
-      active: true,
-    });
-
-    resolved.set(definition.externalId, internalId);
-  }
-
-  return resolved;
-}
-
-async function resolveReferees(seasonId: string, matches: PublicMatch[]) {
-  const names = [
-    ...new Set(
-      matches
-        .map((match) => match.refereeName?.trim())
-        .filter((name): name is string => Boolean(name)),
-    ),
-  ];
-
-  const existing: RefereeRecord[] = await prisma.referee.findMany({
-    select: { id: true, name: true, slug: true },
-  });
-  const byKey = new Map<string, RefereeRecord>(
-    existing.map((referee) => [normalizeLookup(referee.name), referee]),
-  );
-  const result = new Map<string, string>();
-
-  for (const name of names) {
-    const key = normalizeLookup(name);
-    let referee = byKey.get(key);
-
-    if (!referee) {
-      const slug = slugify(name);
-      referee = await prisma.referee.upsert({
-        where: { slug },
-        update: { name, active: true },
-        create: { name, slug, active: true },
-        select: { id: true, name: true, slug: true },
-      });
-      byKey.set(key, referee);
-    }
-
-    await prisma.refereeSeason.upsert({
-      where: {
-        refereeId_seasonId: {
-          refereeId: referee.id,
-          seasonId,
-        },
-      },
-      update: {},
-      create: {
-        refereeId: referee.id,
-        seasonId,
-      },
-    });
-
-    result.set(key, referee.id);
-  }
-
-  return result;
-}
-
 async function preparePublicBatch(input: {
   userId: string;
   season: SeasonWithLeague;
@@ -475,157 +210,15 @@ async function preparePublicBatch(input: {
   batchName: string;
   matches: PublicMatch[];
 }) {
-  const { userId, season, providerCode, providerName, externalLeagueId, batchName } = input;
-  const matches = input.matches
-    .filter((match) => !Number.isNaN(match.kickoffAt.getTime()))
-    .sort((a, b) => a.kickoffAt.getTime() - b.kickoffAt.getTime());
-
-  if (!matches.length) {
-    throw new PublicDataError("Źródło nie zwróciło żadnych meczów.", providerName);
-  }
-
-  const source = await upsertSourceAndLeagueMapping(
-    season,
-    providerCode,
-    providerName,
-    externalLeagueId,
-  );
-  const teamIds = await resolveTeams(season, providerCode, matches);
-  const refereeIds = await resolveReferees(season.id, matches);
-
-  const externalIds = matches.map((match) => match.externalId);
-  const existingByExternal = new Map<string, ExistingMatchRef>(
-    (
-      await prisma.match.findMany({
-        where: {
-          dataSourceId: source.id,
-          sourceExternalId: { in: externalIds },
-        },
-        select: {
-          id: true,
-          sourceExternalId: true,
-          kickoffAt: true,
-          homeTeamId: true,
-          awayTeamId: true,
-        },
-      })
-    ).map((match) => [match.sourceExternalId!, match]),
-  );
-
-  const existingSeasonMatches: ExistingMatchRef[] = await prisma.match.findMany({
-    where: { seasonId: season.id },
-    select: {
-      id: true,
-      kickoffAt: true,
-      homeTeamId: true,
-      awayTeamId: true,
-    },
+  return prepareExternalImportBatch({
+    userId: input.userId,
+    season: input.season,
+    providerCode: input.providerCode,
+    providerName: input.providerName,
+    externalLeagueId: input.externalLeagueId,
+    batchName: input.batchName,
+    matches: input.matches,
   });
-  const existingByDay = new Map<string, ExistingMatchRef>(
-    existingSeasonMatches.map((match) => [
-      `${match.homeTeamId}:${match.awayTeamId}:${isoDay(match.kickoffAt)}`,
-      match,
-    ]),
-  );
-
-  const batch = await prisma.importBatch.create({
-    data: {
-      fileName: batchName,
-      status: ImportStatus.VALIDATING,
-      sourceId: source.id,
-      createdById: userId,
-      rowsTotal: matches.length,
-    },
-  });
-
-  let valid = 0;
-  let invalid = 0;
-  const rows: Prisma.ImportRowCreateManyInput[] = [];
-
-  for (const [index, match] of matches.entries()) {
-    const errors: string[] = [];
-    const homeTeamId = teamIds.get(match.home.externalId);
-    const awayTeamId = teamIds.get(match.away.externalId);
-
-    if (!homeTeamId) errors.push(`Nie udało się połączyć gospodarza „${match.home.name}”.`);
-    if (!awayTeamId) errors.push(`Nie udało się połączyć gościa „${match.away.name}”.`);
-    if (homeTeamId && awayTeamId && homeTeamId === awayTeamId) {
-      errors.push("Gospodarz i gość wskazują tę samą drużynę.");
-    }
-
-    const sourceExisting = existingByExternal.get(match.externalId);
-    const dayExisting = homeTeamId && awayTeamId
-      ? existingByDay.get(`${homeTeamId}:${awayTeamId}:${isoDay(match.kickoffAt)}`)
-      : null;
-    const existing = sourceExisting ?? dayExisting ?? null;
-    const kickoffAt = sourceExisting?.kickoffAt
-      ?? (!match.kickoffTimeKnown && dayExisting
-        ? dayExisting.kickoffAt
-        : match.kickoffAt);
-    const refereeId = match.refereeName
-      ? refereeIds.get(normalizeLookup(match.refereeName)) ?? null
-      : null;
-
-    const stored: StoredPublicRow = {
-      provider: providerCode,
-      operation: existing ? "UPDATE" : "CREATE",
-      existingMatchId: existing?.id ?? null,
-      sourceExternalId: match.externalId,
-      sourceUpdatedAt: new Date().toISOString(),
-      seasonId: season.id,
-      round: match.round,
-      kickoffAt: kickoffAt.toISOString(),
-      homeTeamId: homeTeamId ?? "",
-      awayTeamId: awayTeamId ?? "",
-      homeTeamName: match.home.name,
-      awayTeamName: match.away.name,
-      homeScore: match.homeScore,
-      awayScore: match.awayScore,
-      status: match.status,
-      refereeId,
-      refereeName: match.refereeName,
-      note: match.note,
-      stats: match.stats,
-      importedMatchId: null,
-      duplicateMatchId: null,
-      importedAt: null,
-    };
-
-    const status = errors.length ? ImportRowStatus.INVALID : ImportRowStatus.VALID;
-    if (status === ImportRowStatus.VALID) valid += 1;
-    else invalid += 1;
-
-    rows.push({
-      importId: batch.id,
-      rowNumber: index + 1,
-      status,
-      rawData: stored as unknown as Prisma.InputJsonValue,
-      errors: errors.length
-        ? (errors as unknown as Prisma.InputJsonValue)
-        : undefined,
-    });
-  }
-
-  await prisma.$transaction([
-    prisma.importRow.createMany({ data: rows }),
-    prisma.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        status: valid > 0 ? ImportStatus.READY : ImportStatus.FAILED,
-        rowsValid: valid,
-        rowsInvalid: invalid,
-        rowsDuplicate: 0,
-      },
-    }),
-  ]);
-
-  revalidatePath("/");
-  revalidatePath("/automation");
-  revalidatePath("/imports");
-  revalidatePath("/teams");
-  revalidatePath("/referees");
-
-  return batch.id;
 }
 
 type FootballDataOrgMatch = {

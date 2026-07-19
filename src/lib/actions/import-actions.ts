@@ -21,6 +21,8 @@ import {
   type CsvRecord,
 } from "@/lib/imports/csv";
 import { preferIncoming, stableMatchStatus } from "@/lib/imports/api-update-safety";
+import { commitExternalImportRow } from "@/lib/imports/external-commit";
+import type { ExternalRefereeCandidate, ExternalTeamCandidate } from "@/lib/imports/external-preview";
 import { valueToString } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -47,6 +49,13 @@ type StatField = (typeof statMapping)[keyof typeof statMapping];
 
 type StoredImportRow = {
   provider?: string;
+  providerName?: string;
+  externalLeagueId?: string;
+  preparedMatchUpdatedAt?: string | null;
+  homeTeamCandidate?: ExternalTeamCandidate;
+  awayTeamCandidate?: ExternalTeamCandidate;
+  refereeCandidate?: ExternalRefereeCandidate | null;
+  previewActions?: string[];
   operation?: "CREATE" | "UPDATE";
   existingMatchId?: string | null;
   sourceExternalId?: string | null;
@@ -166,8 +175,16 @@ async function updateBatchCommitStatus(batchId: string) {
   });
 }
 
-function duplicateKey(data: Pick<StoredImportRow, "homeTeamId" | "awayTeamId" | "kickoffAt">) {
-  return `${data.homeTeamId}:${data.awayTeamId}:${data.kickoffAt}`;
+function duplicateKey(data: Pick<StoredImportRow, "homeTeamId" | "awayTeamId" | "kickoffAt" | "homeTeamName" | "awayTeamName" | "homeTeamCandidate" | "awayTeamCandidate">) {
+  const home = data.homeTeamId
+    || data.homeTeamCandidate?.existingId
+    || data.homeTeamCandidate?.externalId
+    || normalizeLookup(data.homeTeamName);
+  const away = data.awayTeamId
+    || data.awayTeamCandidate?.existingId
+    || data.awayTeamCandidate?.externalId
+    || normalizeLookup(data.awayTeamName);
+  return `${home}:${away}:${data.kickoffAt}`;
 }
 
 function auditValues(data: StoredImportRow, batchId: string, rowId: string, fileName: string) {
@@ -241,17 +258,11 @@ export async function uploadCsvImportAction(formData: FormData) {
   );
   const fileKeys = new Map<string, number>();
 
-  const source = await prisma.dataSource.upsert({
-    where: { providerCode: "csv-import" },
-    update: { name: "Import CSV", type: DataSourceType.CSV, active: true },
-    create: { name: "Import CSV", providerCode: "csv-import", type: DataSourceType.CSV },
-  });
 
   const batch = await prisma.importBatch.create({
     data: {
       fileName: file.name,
       status: ImportStatus.VALIDATING,
-      sourceId: source.id,
       createdById: user.id,
       rowsTotal: parsed.records.length,
     },
@@ -512,6 +523,32 @@ export async function commitCsvImportAction(formData: FormData) {
 
   for (const row of batch.rows) {
     const data = storedRow(row.rawData);
+
+    if (data.provider) {
+      try {
+        await commitExternalImportRow({
+          rowId: row.id,
+          batchId: batch.id,
+          userId: user.id,
+          fileName: batch.fileName,
+        });
+      } catch (error) {
+        await prisma.importRow.update({
+          where: { id: row.id },
+          data: {
+            status: ImportRowStatus.INVALID,
+            errors: [
+              ...messages(row.errors),
+              error instanceof Error
+                ? `Nie udało się atomowo zatwierdzić wiersza: ${error.message}`
+                : "Nie udało się atomowo zatwierdzić wiersza.",
+            ] as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+      continue;
+    }
+
     const isApi = batch.source?.type === DataSourceType.API || data.provider === "api-football";
     const sourceExternalId = isApi
       ? data.sourceExternalId ?? null
@@ -672,6 +709,15 @@ export async function commitCsvImportAction(formData: FormData) {
 
       await prisma.$transaction(async (tx) => {
         const importedAt = new Date();
+        const csvSource = await tx.dataSource.upsert({
+          where: { providerCode: "csv-import" },
+          update: { name: "Import CSV", type: DataSourceType.CSV, active: true },
+          create: { name: "Import CSV", providerCode: "csv-import", type: DataSourceType.CSV },
+        });
+        await tx.importBatch.update({
+          where: { id: batch.id },
+          data: { sourceId: csvSource.id },
+        });
         const match = await tx.match.create({
           data: {
             seasonId: data.seasonId,
@@ -683,7 +729,7 @@ export async function commitCsvImportAction(formData: FormData) {
             awayScore: data.awayScore,
             status: data.status,
             refereeId: data.refereeId,
-            dataSourceId: batch.sourceId,
+            dataSourceId: csvSource.id,
             sourceExternalId,
             sourceUpdatedAt: data.sourceUpdatedAt ? new Date(data.sourceUpdatedAt) : importedAt,
             note: data.note,
