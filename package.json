@@ -1,6 +1,6 @@
 {
   "name": "staty-pilkarskie",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -15,7 +15,7 @@
     "test": "tsx --test \"src/**/*.test.ts\"",
     "db:deploy": "prisma migrate deploy",
     "postinstall": "prisma generate",
-    "vercel-build": "tsx scripts/check-deployment-env.ts && prisma generate && prisma migrate deploy && next build",
+    "vercel-build": "tsx scripts/check-deployment-env.ts && prisma generate && prisma migrate deploy && npm run db:bootstrap:production && next build",
     "db:seed:production": "tsx prisma/bootstrap-production.ts",
     "deploy:check": "tsx scripts/check-deployment-env.ts",
     "db:bootstrap:production": "tsx prisma/bootstrap-production.ts"

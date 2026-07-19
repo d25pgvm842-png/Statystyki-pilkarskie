@@ -37,24 +37,36 @@ async function main() {
   });
 
   try {
-    const passwordHash = await hash(admin.ADMIN_PASSWORD, 12);
-
-    await prisma.user.upsert({
-      where: { email: admin.ADMIN_EMAIL.toLowerCase() },
-      update: {
-        name: "Administrator",
-        passwordHash,
-        role: UserRole.ADMIN,
-        active: true,
-      },
-      create: {
-        email: admin.ADMIN_EMAIL.toLowerCase(),
-        name: "Administrator",
-        passwordHash,
-        role: UserRole.ADMIN,
-        active: true,
-      },
+    const adminEmail = admin.ADMIN_EMAIL.toLowerCase();
+    const existingAdmin = await prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { id: true },
     });
+
+    if (existingAdmin) {
+      await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: {
+          name: "Administrator",
+          role: UserRole.ADMIN,
+          active: true,
+        },
+      });
+      console.log("Konto administratora już istnieje — hasło pozostawiono bez zmian.");
+    } else {
+      const passwordHash = await hash(admin.ADMIN_PASSWORD, 12);
+
+      await prisma.user.create({
+        data: {
+          email: adminEmail,
+          name: "Administrator",
+          passwordHash,
+          role: UserRole.ADMIN,
+          active: true,
+        },
+      });
+      console.log("Utworzono pierwsze konto administratora.");
+    }
 
     for (const source of [
       { name: "Wprowadzanie ręczne", providerCode: "manual", type: DataSourceType.MANUAL },

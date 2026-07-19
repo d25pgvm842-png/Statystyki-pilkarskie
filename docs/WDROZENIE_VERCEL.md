@@ -5,7 +5,7 @@
 - aplikacja Next.js: Vercel,
 - baza: Prisma Postgres z Vercel Marketplace albo inny zarządzany PostgreSQL,
 - migracje: `prisma migrate deploy` podczas wdrożenia,
-- inicjalizacja: jednorazowy `npm run db:bootstrap:production`,
+- inicjalizacja: automatyczny, idempotentny bootstrap podczas wdrożenia,
 - monitoring: `GET /api/health`.
 
 ## 1. Baza danych
@@ -18,7 +18,8 @@ Nie używaj w produkcji adresu `localhost`, nazwy hosta `postgres` ani lokalnego
 
 Ustaw w Vercel dla środowiska Production:
 
-- `DATABASE_URL` — connection string bazy w chmurze,
+- `DATABASE_URL` — połączenie aplikacji przez pulę,
+- `POSTGRES_URL` — bezpośrednie połączenie używane przez migracje, jeśli integracja je udostępnia,
 - `AUTH_SECRET` — losowy sekret minimum 32 znaki,
 - `ADMIN_EMAIL` — adres pierwszego administratora,
 - `ADMIN_PASSWORD` — hasło minimum 12 znaków.
@@ -37,18 +38,15 @@ Podczas builda projekt wykona kolejno:
 
 1. walidację zmiennych,
 2. generowanie Prisma Client,
-3. bezpieczne zastosowanie zapisanych migracji,
-4. produkcyjny build Next.js.
+3. bezpieczne zastosowanie zapisanych migracji przez `POSTGRES_URL` (z fallbackiem do `DATABASE_URL`),
+4. utworzenie brakującego administratora i danych startowych,
+5. produkcyjny build Next.js.
 
 ## 4. Pierwsze uruchomienie bazy
 
-Po pierwszym udanym wdrożeniu wykonaj jednorazowo:
+Bootstrap uruchamia się automatycznie w komendzie Vercela po migracjach, a przed buildem Next.js. Można go bezpiecznie wykonać ponownie: istniejące konto administratora nie otrzyma ponownie hasła z `ADMIN_PASSWORD`.
 
-```bash
-npm run db:bootstrap:production
-```
-
-Bootstrap tworzy lub aktualizuje:
+Bootstrap tworzy lub uzupełnia:
 
 - konto administratora,
 - źródła danych ręczne, CSV i XLSX,
