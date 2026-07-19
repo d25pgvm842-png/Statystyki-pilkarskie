@@ -11,6 +11,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { HistoricalDownloadSubmit } from "@/components/public-data/historical-download-submit";
 
 const errorMessages: Record<string, string> = {
   "public-provider": "Nie udało się pobrać danych z darmowego źródła.",
@@ -180,9 +181,7 @@ export default async function PublicDataPage({
                 <div className="rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-950">
                   Wyniki, sędzia, strzały, celne, rożne, faule, spalone i kartki. Brakujące pola zostaną puste.
                 </div>
-                <div className="flex justify-end">
-                  <Button type="submit"><Database size={16} className="mr-2" />Pobierz cały sezon</Button>
-                </div>
+                <HistoricalDownloadSubmit />
               </form>
             </CardContent>
           </Card>
