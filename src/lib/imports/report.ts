@@ -20,6 +20,22 @@ type StoredReportData = {
   operation?: "CREATE" | "UPDATE";
   existingMatchId?: string | null;
   sourceExternalId?: string | null;
+  stats?: {
+    homeCorners?: number | null;
+    awayCorners?: number | null;
+    homeYellowCards?: number | null;
+    awayYellowCards?: number | null;
+    homeRedCards?: number | null;
+    awayRedCards?: number | null;
+    homeShotsOnTarget?: number | null;
+    awayShotsOnTarget?: number | null;
+    homeShots?: number | null;
+    awayShots?: number | null;
+    homeFouls?: number | null;
+    awayFouls?: number | null;
+    homeOffsides?: number | null;
+    awayOffsides?: number | null;
+  };
 };
 
 export function importRowData(value: Prisma.JsonValue): StoredReportData {
@@ -64,6 +80,20 @@ export function buildImportReportCsv(rows: ImportReportRow[]) {
     "home_score",
     "away_score",
     "referee",
+    "home_corners",
+    "away_corners",
+    "home_yellow_cards",
+    "away_yellow_cards",
+    "home_red_cards",
+    "away_red_cards",
+    "home_shots_on_target",
+    "away_shots_on_target",
+    "home_shots",
+    "away_shots",
+    "home_fouls",
+    "away_fouls",
+    "home_offsides",
+    "away_offsides",
     "imported_match_id",
     "duplicate_match_id",
     "messages",
@@ -81,6 +111,20 @@ export function buildImportReportCsv(rows: ImportReportRow[]) {
       data.homeScore,
       data.awayScore,
       data.refereeName,
+      data.stats?.homeCorners,
+      data.stats?.awayCorners,
+      data.stats?.homeYellowCards,
+      data.stats?.awayYellowCards,
+      data.stats?.homeRedCards,
+      data.stats?.awayRedCards,
+      data.stats?.homeShotsOnTarget,
+      data.stats?.awayShotsOnTarget,
+      data.stats?.homeShots,
+      data.stats?.awayShots,
+      data.stats?.homeFouls,
+      data.stats?.awayFouls,
+      data.stats?.homeOffsides,
+      data.stats?.awayOffsides,
       data.importedMatchId,
       data.duplicateMatchId,
       importRowMessages(row.errors).join(" | "),

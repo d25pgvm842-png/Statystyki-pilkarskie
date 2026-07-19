@@ -60,6 +60,20 @@ function filterHref(id: string, status?: string) {
   return status ? `/imports/${id}?status=${status}` : `/imports/${id}`;
 }
 
+const statDefinitions = [
+  { label: "Rożne", home: "homeCorners", away: "awayCorners" },
+  { label: "Żółte", home: "homeYellowCards", away: "awayYellowCards" },
+  { label: "Czerwone", home: "homeRedCards", away: "awayRedCards" },
+  { label: "Celne", home: "homeShotsOnTarget", away: "awayShotsOnTarget" },
+  { label: "Strzały", home: "homeShots", away: "awayShots" },
+  { label: "Faule", home: "homeFouls", away: "awayFouls" },
+  { label: "Spalone", home: "homeOffsides", away: "awayOffsides" },
+] as const;
+
+function hasAnyStats(stats: NonNullable<ReturnType<typeof importRowData>["stats"]>) {
+  return statDefinitions.some(({ home, away }) => stats[home] !== null || stats[away] !== null);
+}
+
 export default async function ImportPreviewPage({
   params,
   searchParams,
@@ -183,7 +197,7 @@ export default async function ImportPreviewPage({
           </div>
         </CardHeader>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-sm">
+          <table className="w-full min-w-[1540px] text-sm">
             <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/70">
               <tr>
                 <th className="p-3">Wiersz</th>
@@ -192,6 +206,7 @@ export default async function ImportPreviewPage({
                 <th className="p-3">Mecz</th>
                 <th className="p-3">Wynik</th>
                 <th className="p-3">Sędzia</th>
+                <th className="p-3">Statystyki H:G</th>
                 <th className="p-3">Raport</th>
                 <th className="p-3">Akcja</th>
               </tr>
@@ -217,6 +232,22 @@ export default async function ImportPreviewPage({
                     </td>
                     <td className="p-3">{data.homeScore ?? "—"}:{data.awayScore ?? "—"}</td>
                     <td className="p-3">{data.refereeName ?? "—"}</td>
+                    <td className="p-3 align-top">
+                      {data.stats && hasAnyStats(data.stats) ? (
+                        <div className="grid min-w-[250px] grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          {statDefinitions.map(({ label, home, away }) => (
+                            <div key={label} className="flex justify-between gap-3">
+                              <span className="text-zinc-500">{label}</span>
+                              <span className="font-mono font-medium">
+                                {data.stats?.[home] ?? "—"}:{data.stats?.[away] ?? "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-zinc-500">Brak statystyk szczegółowych</span>
+                      )}
+                    </td>
                     <td className="p-3">
                       {errors.length ? (
                         <ul className={`grid gap-1 text-xs ${row.status === "DUPLICATE" ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300"}`}>
@@ -259,7 +290,7 @@ export default async function ImportPreviewPage({
                 );
               })}
               {!visibleRows.length ? (
-                <tr><td colSpan={8} className="p-10 text-center text-sm text-zinc-500">Brak wierszy o wybranym statusie.</td></tr>
+                <tr><td colSpan={9} className="p-10 text-center text-sm text-zinc-500">Brak wierszy o wybranym statusie.</td></tr>
               ) : null}
             </tbody>
           </table>
