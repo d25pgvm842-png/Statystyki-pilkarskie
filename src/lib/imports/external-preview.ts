@@ -64,6 +64,14 @@ export type ExternalRefereeCandidate = {
   requiresMembership: boolean;
 };
 
+export type ExternalSeasonCandidate = {
+  leagueId: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  active: false;
+};
+
 export type ExternalPreparedRowData = {
   provider?: string;
   providerName?: string;
@@ -74,6 +82,7 @@ export type ExternalPreparedRowData = {
   sourceExternalId?: string | null;
   sourceUpdatedAt?: string | null;
   seasonId: string;
+  seasonCandidate?: ExternalSeasonCandidate | null;
   round: number | null;
   kickoffAt: string;
   homeTeamId: string;
@@ -100,6 +109,7 @@ type SeasonWithLeague = {
   id: string;
   leagueId: string;
   startsAt: Date;
+  seasonCandidate?: ExternalSeasonCandidate | null;
   league: {
     id: string;
     name: string;
@@ -329,6 +339,7 @@ export async function prepareExternalImportBatch(input: {
       home,
       away,
       referee: refereeCandidate,
+      seasonCandidate: input.season.seasonCandidate,
     });
 
     const data: ExternalPreparedRowData = {
@@ -341,6 +352,7 @@ export async function prepareExternalImportBatch(input: {
       sourceExternalId: match.externalId,
       sourceUpdatedAt: new Date().toISOString(),
       seasonId: input.season.id,
+      seasonCandidate: input.season.seasonCandidate ?? null,
       round: match.round,
       kickoffAt: kickoffAt.toISOString(),
       homeTeamId: home.existingId ?? "",

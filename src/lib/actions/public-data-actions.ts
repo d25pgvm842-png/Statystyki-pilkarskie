@@ -6,6 +6,7 @@ import { MatchStatus } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
+import { buildHistoricalSeasonPreview } from "@/lib/imports/historical-season-preview";
 import {
   normalizeLookup,
   parseCsv,
@@ -79,6 +80,13 @@ type SeasonWithLeague = {
   leagueId: string;
   startsAt: Date;
   endsAt: Date;
+  seasonCandidate?: {
+    leagueId: string;
+    name: string;
+    startsAt: string;
+    endsAt: string;
+    active: false;
+  } | null;
   league: {
     id: string;
     name: string;
@@ -177,28 +185,23 @@ function errorDetail(error: unknown) {
   return "Nieznany błąd źródła.";
 }
 
-async function ensureSeason(leagueId: string, startYear: number) {
+async function loadHistoricalSeasonPreview(leagueId: string, startYear: number) {
   const league = await prisma.league.findUnique({ where: { id: leagueId } });
   if (!league) return null;
 
   const name = seasonLabel(startYear);
-  const season = await prisma.season.upsert({
+  const existing = await prisma.season.findUnique({
     where: { leagueId_name: { leagueId, name } },
-    update: {
-      startsAt: new Date(Date.UTC(startYear, 6, 1)),
-      endsAt: new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59)),
-    },
-    create: {
-      leagueId,
-      name,
-      startsAt: new Date(Date.UTC(startYear, 6, 1)),
-      endsAt: new Date(Date.UTC(startYear + 1, 5, 30, 23, 59, 59)),
-      active: false,
-    },
     include: { league: true },
   });
 
-  return season as SeasonWithLeague;
+  if (existing) return existing as SeasonWithLeague;
+
+  return buildHistoricalSeasonPreview({
+    league,
+    startYear,
+    name,
+  }) as SeasonWithLeague;
 }
 
 async function preparePublicBatch(input: {
@@ -672,7 +675,7 @@ export async function prepareHistoricalPublicImportAction(formData: FormData) {
     redirect(publicErrorHref("public-season"));
   }
 
-  const season = await ensureSeason(leagueId, startYear);
+  const season = await loadHistoricalSeasonPreview(leagueId, startYear);
   if (!season) redirect(publicErrorHref("public-season"));
 
   try {

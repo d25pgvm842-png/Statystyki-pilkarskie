@@ -18,6 +18,7 @@ export function buildExternalPreviewActions(input: {
   home: PreviewTeamCandidate;
   away: PreviewTeamCandidate;
   referee: PreviewRefereeCandidate;
+  seasonCandidate?: { name: string } | null;
 }) {
   const actions: string[] = [
     input.operation === "UPDATE"
@@ -25,6 +26,7 @@ export function buildExternalPreviewActions(input: {
       : "Utworzy nowy mecz",
   ];
 
+  if (input.seasonCandidate) actions.push(`Utworzy sezon: ${input.seasonCandidate.name}`);
   if (!input.sourceExists) actions.push("Utworzy źródło danych");
   if (!input.leagueMappingExists) actions.push("Utworzy mapowanie ligi");
 

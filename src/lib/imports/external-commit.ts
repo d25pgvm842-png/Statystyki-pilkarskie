@@ -14,6 +14,7 @@ import { normalizeLookup } from "@/lib/imports/csv";
 import {
   type ExternalPreparedRowData,
   type ExternalRefereeCandidate,
+  type ExternalSeasonCandidate,
   type ExternalStats,
   type ExternalTeamCandidate,
 } from "@/lib/imports/external-preview";
@@ -75,6 +76,46 @@ function slugify(value: string, suffix?: string | null) {
 
 async function advisoryLock(tx: TransactionClient, key: string) {
   await tx.$queryRaw<Array<{ lock: string | null }>>`\n    SELECT pg_advisory_xact_lock(hashtext(${key}))::text AS "lock"\n  `;
+}
+
+async function resolveSeason(input: {
+  tx: TransactionClient;
+  seasonId: string;
+  candidate?: ExternalSeasonCandidate | null;
+}) {
+  if (!input.candidate) {
+    const existing = await input.tx.season.findUnique({ where: { id: input.seasonId } });
+    if (!existing) throw new Error("Sezon nie istnieje podczas zatwierdzania raportu.");
+    return existing;
+  }
+
+  await advisoryLock(
+    input.tx,
+    `external-season:${input.candidate.leagueId}:${input.candidate.name}`,
+  );
+
+  const league = await input.tx.league.findUnique({
+    where: { id: input.candidate.leagueId },
+    select: { id: true },
+  });
+  if (!league) throw new Error("Liga dla kandydata sezonu nie istnieje.");
+
+  return input.tx.season.upsert({
+    where: {
+      leagueId_name: {
+        leagueId: input.candidate.leagueId,
+        name: input.candidate.name,
+      },
+    },
+    update: {},
+    create: {
+      leagueId: input.candidate.leagueId,
+      name: input.candidate.name,
+      startsAt: new Date(input.candidate.startsAt),
+      endsAt: new Date(input.candidate.endsAt),
+      active: input.candidate.active,
+    },
+  });
 }
 
 async function resolveTeam(input: {
@@ -523,8 +564,20 @@ async function commitOnce(input: {
       return { status: "SKIPPED" as const };
     }
 
-    const data = storedExternalRow(row.rawData);
-    if (!data.provider) throw new Error("Wiersz nie jest importem zewnętrznym.");
+    const storedData = storedExternalRow(row.rawData);
+    const providerCode = storedData.provider;
+    if (!providerCode) throw new Error("Wiersz nie jest importem zewnętrznym.");
+
+    const season = await resolveSeason({
+      tx,
+      seasonId: storedData.seasonId,
+      candidate: storedData.seasonCandidate,
+    });
+    const data: ExternalPreparedRowData & { provider: string } = {
+      ...storedData,
+      provider: providerCode,
+      seasonId: season.id,
+    };
 
     const source = await ensureSource({
       tx,
