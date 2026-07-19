@@ -69,7 +69,7 @@ function slugify(value: string, suffix?: string | null) {
 }
 
 async function advisoryLock(tx: TransactionClient, key: string) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+  await tx.$queryRaw<Array<{ lock: string | null }>>`\n    SELECT pg_advisory_xact_lock(hashtext(${key}))::text AS "lock"\n  `;
 }
 
 async function resolveTeam(input: {
