@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   BarChart3,
+  Bot,
   DatabaseZap,
   FileUp,
   Gauge,
@@ -39,6 +40,7 @@ export function AppShell({
   const navigation = user.role === "ADMIN"
     ? [
         ...links,
+        { href: "/automation", label: "Automatyzacja", icon: Bot },
         { href: "/data-management", label: "Dane i kopie", icon: HardDriveDownload },
         { href: "/settings", label: "Konfiguracja", icon: Settings },
       ]

@@ -44,6 +44,11 @@ const statMapping = {
 type StatField = (typeof statMapping)[keyof typeof statMapping];
 
 type StoredImportRow = {
+  provider?: string;
+  operation?: "CREATE" | "UPDATE";
+  existingMatchId?: string | null;
+  sourceExternalId?: string | null;
+  sourceUpdatedAt?: string | null;
   seasonId: string;
   round: number | null;
   kickoffAt: string;
@@ -369,17 +374,19 @@ export async function toggleImportRowAction(formData: FormData) {
     if (row.status !== ImportRowStatus.SKIPPED) redirect(`/imports/${batchId}?error=row`);
     const data = storedRow(row.rawData);
 
-    const existing = await prisma.match.findUnique({
-      where: {
-        seasonId_homeTeamId_awayTeamId_kickoffAt: {
-          seasonId: data.seasonId,
-          homeTeamId: data.homeTeamId,
-          awayTeamId: data.awayTeamId,
-          kickoffAt: new Date(data.kickoffAt),
-        },
-      },
-      select: { id: true },
-    });
+    const existing = data.operation === "UPDATE" && data.sourceExternalId
+      ? null
+      : await prisma.match.findUnique({
+          where: {
+            seasonId_homeTeamId_awayTeamId_kickoffAt: {
+              seasonId: data.seasonId,
+              homeTeamId: data.homeTeamId,
+              awayTeamId: data.awayTeamId,
+              kickoffAt: new Date(data.kickoffAt),
+            },
+          },
+          select: { id: true },
+        });
 
     const siblingRows = await prisma.importRow.findMany({
       where: {
@@ -455,6 +462,7 @@ export async function commitCsvImportAction(formData: FormData) {
   const batch = await prisma.importBatch.findUnique({
     where: { id: batchId },
     include: {
+      source: true,
       rows: {
         where: { status: ImportRowStatus.VALID },
         orderBy: { rowNumber: "asc" },
@@ -467,8 +475,128 @@ export async function commitCsvImportAction(formData: FormData) {
 
   for (const row of batch.rows) {
     const data = storedRow(row.rawData);
+    const isApi = batch.source?.type === DataSourceType.API || data.provider === "api-football";
+    const sourceExternalId = isApi
+      ? data.sourceExternalId ?? null
+      : `csv:${batch.id}:${row.id}`;
 
     try {
+      const apiExisting = isApi && batch.sourceId && sourceExternalId
+        ? await prisma.match.findFirst({
+            where: {
+              dataSourceId: batch.sourceId,
+              sourceExternalId,
+            },
+            include: { stats: true, overrides: true },
+          })
+        : null;
+
+      if (apiExisting) {
+        await prisma.$transaction(async (tx) => {
+          const importedAt = new Date();
+          const locked = new Set(apiExisting.overrides.map((override) => override.fieldName));
+          const oldValues: Record<string, unknown> = {
+            round: apiExisting.round,
+            kickoffAt: apiExisting.kickoffAt,
+            homeTeamId: apiExisting.homeTeamId,
+            awayTeamId: apiExisting.awayTeamId,
+            homeScore: apiExisting.homeScore,
+            awayScore: apiExisting.awayScore,
+            status: apiExisting.status,
+            refereeId: apiExisting.refereeId,
+            ...Object.fromEntries(Object.values(statMapping).map((field) => [field, apiExisting.stats?.[field] ?? null])),
+          };
+          const incomingValues: Record<string, unknown> = {
+            round: data.round,
+            kickoffAt: new Date(data.kickoffAt),
+            homeTeamId: data.homeTeamId,
+            awayTeamId: data.awayTeamId,
+            homeScore: data.homeScore,
+            awayScore: data.awayScore,
+            status: data.status,
+            refereeId: data.refereeId,
+            ...data.stats,
+          };
+
+          const matchUpdate: Prisma.MatchUpdateInput = {
+            sourceUpdatedAt: data.sourceUpdatedAt ? new Date(data.sourceUpdatedAt) : importedAt,
+          };
+          for (const field of [
+            "round",
+            "kickoffAt",
+            "homeScore",
+            "awayScore",
+            "status",
+            "refereeId",
+          ] as const) {
+            if (!locked.has(field)) {
+              (matchUpdate as Record<string, unknown>)[field] = incomingValues[field];
+            }
+          }
+          if (!locked.has("homeTeamId")) matchUpdate.homeTeam = { connect: { id: data.homeTeamId } };
+          if (!locked.has("awayTeamId")) matchUpdate.awayTeam = { connect: { id: data.awayTeamId } };
+
+          const statsUpdate: Record<string, number | null> = {};
+          for (const field of Object.values(statMapping)) {
+            if (!locked.has(field)) statsUpdate[field] = data.stats[field];
+          }
+
+          await tx.match.update({
+            where: { id: apiExisting.id },
+            data: {
+              ...matchUpdate,
+              stats: {
+                upsert: {
+                  create: data.stats,
+                  update: statsUpdate,
+                },
+              },
+            },
+          });
+
+          const changedFields = Object.keys(incomingValues).filter(
+            (field) => !locked.has(field)
+              && valueToString(oldValues[field]) !== valueToString(incomingValues[field]),
+          );
+          if (changedFields.length) {
+            await tx.auditLog.create({
+              data: {
+                entityType: AuditEntityType.MATCH,
+                entityId: apiExisting.id,
+                action: "SYNC_API_UPDATE",
+                userId: user.id,
+                changes: {
+                  create: changedFields.map((fieldName) => ({
+                    fieldName,
+                    oldValue: valueToString(oldValues[fieldName]),
+                    newValue: valueToString(incomingValues[fieldName]),
+                  })),
+                },
+              },
+            });
+          }
+
+          await tx.importRow.update({
+            where: { id: row.id },
+            data: {
+              status: ImportRowStatus.IMPORTED,
+              rawData: inputRow({
+                ...data,
+                operation: "UPDATE",
+                existingMatchId: apiExisting.id,
+                importedMatchId: apiExisting.id,
+                duplicateMatchId: null,
+                importedAt: importedAt.toISOString(),
+              }),
+              errors: locked.size
+                ? ([`Zachowano ${locked.size} ręcznych korekt.`] as unknown as Prisma.InputJsonValue)
+                : Prisma.DbNull,
+            },
+          });
+        });
+        continue;
+      }
+
       const duplicateMatch = await prisma.match.findUnique({
         where: {
           seasonId_homeTeamId_awayTeamId_kickoffAt: {
@@ -507,8 +635,8 @@ export async function commitCsvImportAction(formData: FormData) {
             status: data.status,
             refereeId: data.refereeId,
             dataSourceId: batch.sourceId,
-            sourceExternalId: `csv:${batch.id}:${row.id}`,
-            sourceUpdatedAt: importedAt,
+            sourceExternalId,
+            sourceUpdatedAt: data.sourceUpdatedAt ? new Date(data.sourceUpdatedAt) : importedAt,
             note: data.note,
             stats: { create: data.stats },
           },
@@ -519,7 +647,7 @@ export async function commitCsvImportAction(formData: FormData) {
           data: {
             entityType: AuditEntityType.MATCH,
             entityId: match.id,
-            action: "IMPORT_CSV",
+            action: isApi ? "SYNC_API_CREATE" : "IMPORT_CSV",
             userId: user.id,
             changes: {
               create: Object.entries(values).map(([fieldName, newValue]) => ({
@@ -537,6 +665,7 @@ export async function commitCsvImportAction(formData: FormData) {
             status: ImportRowStatus.IMPORTED,
             rawData: inputRow({
               ...data,
+              operation: "CREATE",
               importedMatchId: match.id,
               duplicateMatchId: null,
               importedAt: importedAt.toISOString(),
@@ -549,10 +678,17 @@ export async function commitCsvImportAction(formData: FormData) {
       if (databaseErrorCode(error) === "P2002") {
         const duplicate = await prisma.match.findFirst({
           where: {
-            seasonId: data.seasonId,
-            homeTeamId: data.homeTeamId,
-            awayTeamId: data.awayTeamId,
-            kickoffAt: new Date(data.kickoffAt),
+            OR: [
+              {
+                seasonId: data.seasonId,
+                homeTeamId: data.homeTeamId,
+                awayTeamId: data.awayTeamId,
+                kickoffAt: new Date(data.kickoffAt),
+              },
+              ...(batch.sourceId && sourceExternalId
+                ? [{ dataSourceId: batch.sourceId, sourceExternalId }]
+                : []),
+            ],
           },
           select: { id: true },
         });
@@ -597,6 +733,8 @@ export async function commitCsvImportAction(formData: FormData) {
   revalidatePath("/teams");
   revalidatePath("/referees");
   revalidatePath("/comparison");
+  revalidatePath("/trends");
+  revalidatePath("/automation");
   revalidatePath("/imports");
   revalidatePath(`/imports/${batch.id}`);
   redirect(`/imports/${batch.id}?ok=${counts.IMPORTED > 0 ? "completed" : "processed"}`);

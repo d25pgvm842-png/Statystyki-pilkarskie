@@ -17,6 +17,9 @@ type StoredReportData = {
   refereeName?: string | null;
   importedMatchId?: string | null;
   duplicateMatchId?: string | null;
+  operation?: "CREATE" | "UPDATE";
+  existingMatchId?: string | null;
+  sourceExternalId?: string | null;
 };
 
 export function importRowData(value: Prisma.JsonValue): StoredReportData {

@@ -59,6 +59,11 @@ enum LineScope {
   TEAM_AGAINST
 }
 
+enum ExternalEntityType {
+  LEAGUE
+  TEAM
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -195,6 +200,7 @@ model Match {
   @@index([homeTeamId, kickoffAt])
   @@index([awayTeamId, kickoffAt])
   @@index([refereeId])
+  @@unique([dataSourceId, sourceExternalId])
 }
 
 model MatchStats {
@@ -301,4 +307,22 @@ model CustomLine {
   updatedAt DateTime  @updatedAt
 
   @@index([userId, statKey])
+}
+
+
+model ExternalMapping {
+  id           String             @id @default(cuid())
+  providerCode String
+  entityType   ExternalEntityType
+  internalId   String
+  externalId   String
+  externalName String?
+  metadata     Json?
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([providerCode, entityType, internalId])
+  @@unique([providerCode, entityType, externalId])
+  @@index([providerCode, entityType, active])
 }

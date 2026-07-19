@@ -72,6 +72,7 @@ async function main() {
       { name: "Wprowadzanie ręczne", providerCode: "manual", type: DataSourceType.MANUAL },
       { name: "Import CSV", providerCode: "csv", type: DataSourceType.CSV },
       { name: "Import XLSX", providerCode: "xlsx", type: DataSourceType.XLSX },
+      { name: "API-Football", providerCode: "api-football", type: DataSourceType.API },
     ]) {
       await prisma.dataSource.upsert({
         where: { providerCode: source.providerCode },

@@ -129,7 +129,7 @@ export default async function ImportPreviewPage({
             <form action={commitCsvImportAction}>
               <input type="hidden" name="batchId" value={batch.id} />
               <Button type="submit">
-                <Upload size={16} className="mr-2" />Zaimportuj {counts.VALID} poprawnych
+                <Upload size={16} className="mr-2" />{batch.source?.type === "API" ? "Zastosuj" : "Zaimportuj"} {counts.VALID} poprawnych
               </Button>
             </form>
           ) : null}
@@ -138,7 +138,7 @@ export default async function ImportPreviewPage({
 
       {query.ok === "completed" ? (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          <CheckCircle2 size={18} />Import zakończony. Utworzono {counts.IMPORTED} meczów.
+          <CheckCircle2 size={18} />Import zakończony. Przetworzono {counts.IMPORTED} meczów.
         </div>
       ) : null}
       {query.ok === "processed" ? (
@@ -211,7 +211,10 @@ export default async function ImportPreviewPage({
                         : "—"}
                       {data.round ? <div className="text-xs text-zinc-500">Kolejka {data.round}</div> : null}
                     </td>
-                    <td className="p-3 font-medium">{data.homeTeamName || "—"} – {data.awayTeamName || "—"}</td>
+                    <td className="p-3 font-medium">
+                      <div>{data.homeTeamName || "—"} – {data.awayTeamName || "—"}</div>
+                      {data.operation ? <div className="mt-1 text-xs text-zinc-500">{data.operation === "UPDATE" ? "Aktualizacja istniejącego meczu" : "Nowy mecz"}{data.sourceExternalId ? ` · ID ${data.sourceExternalId}` : ""}</div> : null}
+                    </td>
                     <td className="p-3">{data.homeScore ?? "—"}:{data.awayScore ?? "—"}</td>
                     <td className="p-3">{data.refereeName ?? "—"}</td>
                     <td className="p-3">
@@ -220,7 +223,7 @@ export default async function ImportPreviewPage({
                           {errors.map((error) => <li key={error}>• {error}</li>)}
                         </ul>
                       ) : row.status === "IMPORTED" ? (
-                        <span className="text-xs text-emerald-700 dark:text-emerald-300">Mecz zapisano i dodano wpis audytowy.</span>
+                        <span className="text-xs text-emerald-700 dark:text-emerald-300">Mecz zapisano lub zaktualizowano i dodano wpis audytowy.</span>
                       ) : row.status === "SKIPPED" ? (
                         <span className="text-xs text-zinc-500">Wiersz pominięty ręcznie.</span>
                       ) : (

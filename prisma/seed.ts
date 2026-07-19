@@ -48,6 +48,12 @@ async function main() {
     create: { name: "Wprowadzanie ręczne", providerCode: "manual", type: DataSourceType.MANUAL },
   });
 
+  await prisma.dataSource.upsert({
+    where: { providerCode: "api-football" },
+    update: { name: "API-Football", type: DataSourceType.API, active: true },
+    create: { name: "API-Football", providerCode: "api-football", type: DataSourceType.API, active: true },
+  });
+
   for (const item of leagues) {
     const league = await prisma.league.upsert({
       where: { slug: item.slug },

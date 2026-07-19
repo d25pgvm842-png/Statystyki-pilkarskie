@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { exportFileDate } from "@/lib/backup/csv";
+import { listExternalMappings } from "@/lib/external-mappings";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export async function GET() {
     importRows,
     auditLogs,
     customLines,
+    externalMappings,
   ] = await Promise.all([
     prisma.user.findMany({
       select: { id: true, email: true, name: true, role: true, active: true, createdAt: true, updatedAt: true },
@@ -43,6 +45,7 @@ export async function GET() {
     prisma.importRow.findMany({ orderBy: [{ importId: "asc" }, { rowNumber: "asc" }] }),
     prisma.auditLog.findMany({ include: { changes: true }, orderBy: { createdAt: "asc" } }),
     prisma.customLine.findMany({ orderBy: { createdAt: "asc" } }),
+    listExternalMappings({ providerCode: "api-football" }),
   ]);
 
   const payload = {
@@ -63,6 +66,7 @@ export async function GET() {
       matches: matches.length,
       imports: importBatches.length,
       auditLogs: auditLogs.length,
+      externalMappings: externalMappings.length,
     },
     data: {
       users,
@@ -78,6 +82,7 @@ export async function GET() {
       importRows,
       auditLogs,
       customLines,
+      externalMappings,
     },
   };
 
