@@ -49,7 +49,7 @@ export default async function AutomationPage({
     error?: string;
     created?: string;
     linked?: string;
-    total?: string;
+    total?: string;
     detail?: string;
   }>;
 }) {
@@ -121,6 +121,18 @@ export default async function AutomationPage({
           <CheckCircle2 size={18} />Zsynchronizowano {query.total ?? 0} drużyn. Nowe: {query.created ?? 0}, połączone z istniejącymi: {query.linked ?? 0}.
         </div>
       ) : null}
+
+      <Card className="border-emerald-200 dark:border-emerald-900">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <div className="font-medium">Darmowe źródła danych</div>
+            <div className="text-sm text-zinc-500">Osobny, izolowany moduł. Awaria tego widoku nie wyłączy głównej automatyzacji.</div>
+          </div>
+          <Link href="/automation/public-data" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+            Otwórz moduł
+          </Link>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
