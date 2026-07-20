@@ -29,6 +29,22 @@ export async function loadMarketScanner(input: {
   });
   if (!season) return null;
 
+  const previousSeason = await prisma.season.findFirst({
+    where: {
+      leagueId: season.leagueId,
+      startsAt: { lt: season.startsAt },
+    },
+    select: { id: true, name: true },
+    orderBy: { startsAt: "desc" },
+  });
+
+  const historySeasonIds = previousSeason
+    ? [previousSeason.id, season.id]
+    : [season.id];
+  const historySeasonNames = previousSeason
+    ? [previousSeason.name, season.name]
+    : [season.name];
+
   const matchSelect = {
     id: true,
     kickoffAt: true,
@@ -45,7 +61,7 @@ export async function loadMarketScanner(input: {
   const [finishedMatches, upcomingMatches] = await Promise.all([
     prisma.match.findMany({
       where: {
-        seasonId: input.seasonId,
+        seasonId: { in: historySeasonIds },
         status: "FINISHED",
         kickoffAt: { lt: until },
       },
@@ -65,6 +81,7 @@ export async function loadMarketScanner(input: {
 
   return {
     season,
+    historySeasonNames,
     now,
     until,
     summary: scanUpcomingMarket({

@@ -153,6 +153,12 @@ export default async function JournalPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="#dodaj-recznie"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"
+          >
+            <PlusCircle size={16} className="mr-2" />Dodaj ręcznie
+          </Link>
           <form action={settleFinishedAnalysisPicksAction}>
             <input type="hidden" name="returnTo" value={returnTo} />
             <Button type="submit" variant="secondary">
@@ -224,7 +230,7 @@ export default async function JournalPage({
         </Card>
       </div>
 
-      <Card>
+      <Card id="dodaj-recznie" className="scroll-mt-5">
         <CardHeader>
           <CardTitle>Dodaj ręcznie</CardTitle>
           <p className="text-sm text-zinc-500">Dla sumy wybranego rynku w zaplanowanym meczu.</p>

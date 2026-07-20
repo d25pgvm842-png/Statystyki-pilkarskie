@@ -170,14 +170,22 @@ export default async function ScannerPage({
             Nadchodzące mecze spełniające warunki projekcji, próby i historycznego backtestu.
           </p>
         </div>
-        {summary ? (
+        <div className="flex flex-wrap gap-2">
           <Link
-            href={`/scanner/export?${query.toString()}`}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            href="/journal#dodaj-recznie"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"
           >
-            <Download size={16} className="mr-2" />Eksport CSV
+            <BookmarkPlus size={16} className="mr-2" />Otwórz dziennik / dodaj ręcznie
           </Link>
-        ) : null}
+          {summary ? (
+            <Link
+              href={`/scanner/export?${query.toString()}`}
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            >
+              <Download size={16} className="mr-2" />Eksport CSV
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
@@ -266,7 +274,10 @@ export default async function ScannerPage({
 
       {!summary ? (
         <Card className="p-10 text-center text-zinc-500">
-          Brak przyszłych meczów w aktywnych ligach.
+          <div>Brak przyszłych meczów w aktywnych ligach.</div>
+          <Link href="/journal#dodaj-recznie" className="mt-3 inline-flex font-medium text-emerald-600 hover:underline">
+            Otwórz dziennik i dodaj wpis ręcznie
+          </Link>
         </Card>
       ) : (
         <>
@@ -307,7 +318,7 @@ export default async function ScannerPage({
             <CardHeader>
               <CardTitle>Kalibracja historyczna wybranych ustawień</CardTitle>
               <p className="text-sm text-zinc-500">
-                Ta sama linia, kierunek, historia, minimalna próba i minimalna przewaga zostały sprawdzone na zakończonych meczach sezonu.
+                Ta sama linia, kierunek, historia, minimalna próba i minimalna przewaga zostały sprawdzone na zakończonych meczach z sezonów: {loaded?.historySeasonNames.join(" + ") || "brak danych"}.
               </p>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -324,7 +335,12 @@ export default async function ScannerPage({
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
               <div>
                 <div className="font-medium">Słaba kalibracja historyczna</div>
-                <div className="mt-1 text-xs">Backtest ma mniej niż 20 sygnałów. Statusów skanera nie należy traktować jako stabilnego potwierdzenia.</div>
+                <div className="mt-1 text-xs">
+                  Backtest ma mniej niż 20 sygnałów. To nie blokuje zapisu do Dziennika. Pozycję możesz dodać z listy kandydatów albo ręcznie w Dzienniku.
+                </div>
+                <Link href="/journal#dodaj-recznie" className="mt-2 inline-flex text-xs font-medium underline">
+                  Dodaj wpis ręcznie
+                </Link>
               </div>
             </div>
           ) : null}
@@ -392,7 +408,27 @@ export default async function ScannerPage({
                       </td>
                       <td className="p-3">
                         <div className="font-medium">{row.homeTeamName} – {row.awayTeamName}</div>
-                        <div className="text-xs text-zinc-500">kolejka {row.round ?? "—"}</div>
+                        <div className="mt-1 text-xs text-zinc-500">kolejka {row.round ?? "—"}</div>
+                        <form action={addAnalysisPickAction} className="mt-2">
+                          <input type="hidden" name="returnTo" value={scannerReturnTo} />
+                          <input type="hidden" name="source" value="SCANNER" />
+                          <input type="hidden" name="matchId" value={row.matchId} />
+                          <input type="hidden" name="statKey" value={row.statKey} />
+                          <input type="hidden" name="threshold" value={row.threshold} />
+                          <input type="hidden" name="side" value={row.side} />
+                          <input type="hidden" name="projection" value={row.projection} />
+                          <input type="hidden" name="edge" value={row.edge} />
+                          <input type="hidden" name="evidenceStatus" value={row.evidenceStatus} />
+                          <input type="hidden" name="backtestSignals" value={row.sideBacktestSignals} />
+                          <input type="hidden" name="backtestHitRate" value={row.sideBacktestHitRate ?? ""} />
+                          <input type="hidden" name="edgeBacktestSignals" value={row.edgeBacktestSignals} />
+                          <input type="hidden" name="edgeBacktestHitRate" value={row.edgeBacktestHitRate ?? ""} />
+                          <input type="hidden" name="homeSample" value={row.homeSample} />
+                          <input type="hidden" name="awaySample" value={row.awaySample} />
+                          <Button type="submit" size="sm" variant="secondary">
+                            <BookmarkPlus size={14} className="mr-1" />Do dziennika
+                          </Button>
+                        </form>
                       </td>
                       <td className="p-3 text-lg font-semibold">{row.side}</td>
                       <td className="p-3 text-lg font-semibold">{formatNumber(row.projection)}</td>
@@ -408,36 +444,21 @@ export default async function ScannerPage({
                         </span>
                       </td>
                       <td className="p-3">
-                        <div className="flex flex-col items-start gap-2">
-                          <Link href={`/analysis?matchId=${row.matchId}&lookback=${lookback === null ? "all" : lookback}`} className="font-medium text-emerald-600 hover:underline">
-                            Otwórz analizę
-                          </Link>
-                          <form action={addAnalysisPickAction}>
-                            <input type="hidden" name="returnTo" value={scannerReturnTo} />
-                            <input type="hidden" name="source" value="SCANNER" />
-                            <input type="hidden" name="matchId" value={row.matchId} />
-                            <input type="hidden" name="statKey" value={row.statKey} />
-                            <input type="hidden" name="threshold" value={row.threshold} />
-                            <input type="hidden" name="side" value={row.side} />
-                            <input type="hidden" name="projection" value={row.projection} />
-                            <input type="hidden" name="edge" value={row.edge} />
-                            <input type="hidden" name="evidenceStatus" value={row.evidenceStatus} />
-                            <input type="hidden" name="backtestSignals" value={row.sideBacktestSignals} />
-                            <input type="hidden" name="backtestHitRate" value={row.sideBacktestHitRate ?? ""} />
-                            <input type="hidden" name="edgeBacktestSignals" value={row.edgeBacktestSignals} />
-                            <input type="hidden" name="edgeBacktestHitRate" value={row.edgeBacktestHitRate ?? ""} />
-                            <input type="hidden" name="homeSample" value={row.homeSample} />
-                            <input type="hidden" name="awaySample" value={row.awaySample} />
-                            <Button type="submit" size="sm" variant="secondary">
-                              <BookmarkPlus size={14} className="mr-1" />Do dziennika
-                            </Button>
-                          </form>
-                        </div>
+                        <Link href={`/analysis?matchId=${row.matchId}&lookback=${lookback === null ? "all" : lookback}`} className="font-medium text-emerald-600 hover:underline">
+                          Otwórz analizę
+                        </Link>
                       </td>
                     </tr>
                   ))}
                   {!visibleCandidates.length ? (
-                    <tr><td colSpan={12} className="p-10 text-center text-zinc-500">Brak kandydatów dla wybranych ustawień lub statusu.</td></tr>
+                    <tr>
+                      <td colSpan={12} className="p-10 text-center text-zinc-500">
+                        <div>Brak kandydatów dla wybranych ustawień lub statusu.</div>
+                        <Link href="/journal#dodaj-recznie" className="mt-2 inline-flex font-medium text-emerald-600 hover:underline">
+                          Dodaj pozycję ręcznie do Dziennika
+                        </Link>
+                      </td>
+                    </tr>
                   ) : null}
                 </tbody>
               </table>
