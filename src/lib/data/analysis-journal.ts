@@ -5,6 +5,10 @@ import {
   type JournalAnalyticsEntry,
   type JournalMetricEntry,
 } from "@/lib/stats/analysis-journal";
+import {
+  summarizeJournalCalibration,
+  type CalibrationEntry,
+} from "@/lib/stats/journal-calibration";
 
 export async function loadAnalysisJournal(input: {
   userId: string;
@@ -76,9 +80,25 @@ export async function loadAnalysisJournal(input: {
     evidenceStatus: item.evidenceStatus,
   }));
 
+  const calibrationEntries: CalibrationEntry[] = items.map((item) => ({
+    status: item.status,
+    result: item.result,
+    odds: item.odds,
+    stake: item.stake,
+    modelProbability: item.modelProbability,
+    expectedValue: item.expectedValue,
+    modelVersion: item.modelVersion,
+    leagueId: item.match.season.league.id,
+    leagueName: item.match.season.league.name,
+    statKey: item.statKey,
+    statLabel: item.statLabel,
+    side: item.side,
+  }));
+
   return {
     items,
     metrics: summarizeJournal(metricEntries),
     analytics: summarizeJournalAnalytics(analyticsEntries),
+    calibration: summarizeJournalCalibration(calibrationEntries),
   };
 }

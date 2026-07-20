@@ -283,6 +283,12 @@ export default async function JournalPage({
             </Button>
           </form>
           <Link
+            href={`/journal/calibration${query.size ? `?${query.toString()}` : ""}`}
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-zinc-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
+          >
+            <TrendingUp size={16} className="mr-2" />Kalibracja modelu
+          </Link>
+          <Link
             href={`/journal/export?${analyticsQuery.toString()}`}
             className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
           >

@@ -26,7 +26,7 @@ import type { ExternalRefereeCandidate, ExternalTeamCandidate } from "@/lib/impo
 import { valueToString } from "@/lib/utils";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const IMPORT_COMMIT_CHUNK_SIZE = 20;
+const IMPORT_COMMIT_CHUNK_SIZE = 5;
 
 const statMapping = {
   home_corners: "homeCorners",
