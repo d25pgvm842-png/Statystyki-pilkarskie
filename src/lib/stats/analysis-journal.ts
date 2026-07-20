@@ -9,6 +9,16 @@ export type JournalMetricEntry = {
   stake: number | null;
 };
 
+export type JournalAnalyticsEntry = JournalMetricEntry & {
+  leagueId: string;
+  leagueName: string;
+  statKey: string;
+  statLabel: string;
+  side: JournalSide;
+  source: string;
+  evidenceStatus: string | null;
+};
+
 export type JournalMetrics = {
   watching: number;
   playedOpen: number;
@@ -26,6 +36,28 @@ export type JournalMetrics = {
   averageClv: number | null;
   financialEntries: number;
 };
+
+export type JournalAnalyticsRow = JournalMetrics & {
+  key: string;
+  label: string;
+  totalEntries: number;
+  smallSample: boolean;
+};
+
+export type JournalAnalytics = {
+  byLeague: JournalAnalyticsRow[];
+  byMarket: JournalAnalyticsRow[];
+  bySide: JournalAnalyticsRow[];
+  bySource: JournalAnalyticsRow[];
+  byEvidence: JournalAnalyticsRow[];
+};
+
+type JournalAnalyticsDimension =
+  | "league"
+  | "market"
+  | "side"
+  | "source"
+  | "evidence";
 
 function average(values: number[]) {
   if (!values.length) return null;
@@ -73,8 +105,6 @@ export function selectionProfit(input: {
   ) {
     return null;
   }
-  if (input.result === "LOSS") return -input.stake;
-  if (input.result === "PUSH" || input.result === "VOID") return 0;
   if (
     input.odds === null
     || !Number.isFinite(input.odds)
@@ -82,6 +112,8 @@ export function selectionProfit(input: {
   ) {
     return null;
   }
+  if (input.result === "LOSS") return -input.stake;
+  if (input.result === "PUSH" || input.result === "VOID") return 0;
   return Math.round(input.stake * (input.odds - 1) * 100) / 100;
 }
 
@@ -152,5 +184,80 @@ export function summarizeJournal(entries: JournalMetricEntry[]): JournalMetrics 
     averageOdds: average(odds),
     averageClv: average(clv),
     financialEntries,
+  };
+}
+
+function analyticsGroup(entry: JournalAnalyticsEntry, dimension: JournalAnalyticsDimension) {
+  if (dimension === "league") {
+    return { key: entry.leagueId, label: entry.leagueName };
+  }
+  if (dimension === "market") {
+    return { key: entry.statKey, label: entry.statLabel };
+  }
+  if (dimension === "side") {
+    return { key: entry.side, label: entry.side };
+  }
+  if (dimension === "source") {
+    return {
+      key: entry.source,
+      label: entry.source === "SCANNER" ? "Skaner" : "Ręczne",
+    };
+  }
+
+  const evidence = entry.evidenceStatus ?? "NONE";
+  const labels: Record<string, string> = {
+    SUPPORTED: "Wsparte historią",
+    WATCH: "Do obserwacji",
+    WEAK: "Słaba historia",
+    UNVERIFIED: "Niezweryfikowane",
+    NONE: "Brak statusu",
+  };
+  return { key: evidence, label: labels[evidence] ?? evidence };
+}
+
+export function groupJournalAnalytics(
+  entries: JournalAnalyticsEntry[],
+  dimension: JournalAnalyticsDimension,
+): JournalAnalyticsRow[] {
+  const groups = new Map<string, { label: string; entries: JournalAnalyticsEntry[] }>();
+
+  for (const entry of entries) {
+    const group = analyticsGroup(entry, dimension);
+    const current = groups.get(group.key);
+    if (current) {
+      current.entries.push(entry);
+    } else {
+      groups.set(group.key, { label: group.label, entries: [entry] });
+    }
+  }
+
+  return [...groups.entries()]
+    .map(([key, group]) => {
+      const metrics = summarizeJournal(group.entries);
+      return {
+        key,
+        label: group.label,
+        totalEntries: group.entries.length,
+        smallSample: metrics.settled < 10,
+        ...metrics,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.settled - left.settled
+        || right.totalEntries - left.totalEntries
+        || left.label.localeCompare(right.label, "pl"),
+    );
+}
+
+export function summarizeJournalAnalytics(
+  entries: JournalAnalyticsEntry[],
+): JournalAnalytics {
+  return {
+    byLeague: groupJournalAnalytics(entries, "league"),
+    byMarket: groupJournalAnalytics(entries, "market"),
+    bySide: groupJournalAnalytics(entries, "side"),
+    bySource: groupJournalAnalytics(entries, "source"),
+    byEvidence: groupJournalAnalytics(entries, "evidence"),
   };
 }

@@ -6,6 +6,7 @@ import {
   selectionProfit,
   settleTotalSelection,
   summarizeJournal,
+  summarizeJournalAnalytics,
 } from "@/lib/stats/analysis-journal";
 
 test("fingerprint normalizuje linię i rozróżnia kierunek", () => {
@@ -51,7 +52,8 @@ test("wynik finansowy wykorzystuje kurs dziesiętny i stawkę", () => {
 
 test("brak kursu nie tworzy fikcyjnego zysku po wygranej", () => {
   assert.equal(selectionProfit({ result: "WIN", odds: null, stake: 100 }), null);
-  assert.equal(selectionProfit({ result: "LOSS", odds: null, stake: 100 }), -100);
+  assert.equal(selectionProfit({ result: "LOSS", odds: null, stake: 100 }), null);
+  assert.equal(selectionProfit({ result: "PUSH", odds: null, stake: 100 }), null);
   assert.equal(selectionProfit({ result: "WIN", odds: 2, stake: null }), null);
 });
 
@@ -94,14 +96,116 @@ test("zakład oznaczony VOID nie jest liczony jako trafiony ani przegrany", () =
   assert.equal(summary.settled, 0);
 });
 
-test("wygrana bez kursu nie zaniża ROI przez fikcyjny obrót", () => {
+test("brak kursu wyklucza pozycję z ROI i obrotu", () => {
   const summary = summarizeJournal([
     { status: "SETTLED", result: "WIN", odds: null, closingOdds: null, stake: 100 },
     { status: "SETTLED", result: "LOSS", odds: null, closingOdds: null, stake: 50 },
   ]);
 
-  assert.equal(summary.financialEntries, 1);
-  assert.equal(summary.turnover, 50);
-  assert.equal(summary.profit, -50);
-  assert.equal(summary.roi, -100);
+  assert.equal(summary.financialEntries, 0);
+  assert.equal(summary.turnover, 0);
+  assert.equal(summary.profit, 0);
+  assert.equal(summary.roi, null);
+});
+
+
+test("analityka grupuje wyniki według ligi i rynku", () => {
+  const analytics = summarizeJournalAnalytics([
+    {
+      status: "SETTLED",
+      result: "WIN",
+      odds: 2,
+      closingOdds: 1.9,
+      stake: 100,
+      leagueId: "pl",
+      leagueName: "Ekstraklasa",
+      statKey: "corners",
+      statLabel: "Rzuty rożne",
+      side: "OVER",
+      source: "SCANNER",
+      evidenceStatus: "SUPPORTED",
+    },
+    {
+      status: "SETTLED",
+      result: "LOSS",
+      odds: 1.9,
+      closingOdds: 2,
+      stake: 100,
+      leagueId: "pl",
+      leagueName: "Ekstraklasa",
+      statKey: "corners",
+      statLabel: "Rzuty rożne",
+      side: "UNDER",
+      source: "MANUAL",
+      evidenceStatus: null,
+    },
+    {
+      status: "WATCHING",
+      result: null,
+      odds: null,
+      closingOdds: null,
+      stake: null,
+      leagueId: "eng",
+      leagueName: "Premier League",
+      statKey: "shots",
+      statLabel: "Strzały",
+      side: "OVER",
+      source: "SCANNER",
+      evidenceStatus: "WATCH",
+    },
+  ]);
+
+  assert.equal(analytics.byLeague.length, 2);
+  assert.equal(analytics.byLeague[0]?.label, "Ekstraklasa");
+  assert.equal(analytics.byLeague[0]?.totalEntries, 2);
+  assert.equal(analytics.byLeague[0]?.settled, 2);
+  assert.equal(analytics.byLeague[0]?.hitRate, 50);
+  assert.equal(analytics.byMarket.find((row) => row.key === "corners")?.profit, 0);
+  assert.equal(analytics.bySource.find((row) => row.key === "MANUAL")?.label, "Ręczne");
+  assert.equal(analytics.byEvidence.find((row) => row.key === "NONE")?.label, "Brak statusu");
+});
+
+test("mała próba znika dopiero od 10 rozliczonych pozycji", () => {
+  const entries = Array.from({ length: 10 }, (_, index) => ({
+    status: "SETTLED",
+    result: index % 2 === 0 ? "WIN" as const : "LOSS" as const,
+    odds: 2,
+    closingOdds: 1.95,
+    stake: 10,
+    leagueId: "pl",
+    leagueName: "Ekstraklasa",
+    statKey: "corners",
+    statLabel: "Rzuty rożne",
+    side: "OVER" as const,
+    source: "SCANNER",
+    evidenceStatus: "SUPPORTED",
+  }));
+
+  const full = summarizeJournalAnalytics(entries).byLeague[0];
+  const small = summarizeJournalAnalytics(entries.slice(0, 9)).byLeague[0];
+
+  assert.equal(full?.smallSample, false);
+  assert.equal(small?.smallSample, true);
+});
+
+test("segment bez danych finansowych ma ROI null", () => {
+  const analytics = summarizeJournalAnalytics([
+    {
+      status: "SETTLED",
+      result: "WIN",
+      odds: null,
+      closingOdds: null,
+      stake: null,
+      leagueId: "pl",
+      leagueName: "Ekstraklasa",
+      statKey: "corners",
+      statLabel: "Rzuty rożne",
+      side: "OVER",
+      source: "MANUAL",
+      evidenceStatus: null,
+    },
+  ]);
+
+  assert.equal(analytics.byLeague[0]?.financialEntries, 0);
+  assert.equal(analytics.byLeague[0]?.roi, null);
 });
