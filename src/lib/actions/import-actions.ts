@@ -489,10 +489,64 @@ export async function cancelCsvImportAction(formData: FormData) {
   redirect(`/imports/${batchId}?ok=cancelled`);
 }
 
-export async function commitCsvImportAction(formData: FormData) {
-  const user = await requireUser();
-  const batchId = String(formData.get("batchId") ?? "").trim();
-  if (!batchId) redirect("/imports");
+export type ImportChunkResult = {
+  batchId: string;
+  status: "VALIDATING" | "COMPLETED" | "FAILED";
+  remaining: number;
+  imported: number;
+  duplicates: number;
+  invalid: number;
+  skipped: number;
+  processed: number;
+  total: number;
+  completed: boolean;
+};
+
+function buildImportChunkResult(
+  batchId: string,
+  total: number,
+  counts: ImportStatusCounts,
+): ImportChunkResult {
+  const processed = counts.IMPORTED + counts.DUPLICATE + counts.INVALID + counts.SKIPPED;
+  const completedRows = counts.IMPORTED + counts.DUPLICATE + counts.SKIPPED;
+  const status: ImportChunkResult["status"] = counts.VALID > 0
+    ? "VALIDATING"
+    : completedRows > 0
+      ? "COMPLETED"
+      : "FAILED";
+  return {
+    batchId,
+    status,
+    remaining: counts.VALID,
+    imported: counts.IMPORTED,
+    duplicates: counts.DUPLICATE,
+    invalid: counts.INVALID,
+    skipped: counts.SKIPPED,
+    processed,
+    total,
+    completed: counts.VALID === 0,
+  };
+}
+
+function revalidateImportViews(batchId: string) {
+  revalidatePath("/");
+  revalidatePath("/matches");
+  revalidatePath("/teams");
+  revalidatePath("/referees");
+  revalidatePath("/comparison");
+  revalidatePath("/trends");
+  revalidatePath("/automation");
+  revalidatePath("/imports");
+  revalidatePath(`/imports/${batchId}`);
+}
+
+async function processCsvImportChunk(input: {
+  userId: string;
+  batchId: string;
+}): Promise<ImportChunkResult> {
+  const user = { id: input.userId };
+  const batchId = input.batchId.trim();
+  if (!batchId) throw new Error("Brakuje identyfikatora importu.");
 
   const batch = await prisma.importBatch.findUnique({
     where: { id: batchId },
@@ -506,12 +560,13 @@ export async function commitCsvImportAction(formData: FormData) {
     },
   });
 
-  if (!batch || (batch.status !== ImportStatus.READY && batch.status !== ImportStatus.VALIDATING)) redirect(`/imports/${batchId}?error=state`);
+  if (!batch || (batch.status !== ImportStatus.READY && batch.status !== ImportStatus.VALIDATING)) {
+    throw new Error("Import nie jest gotowy do uruchomienia lub wznowienia.");
+  }
   if (!batch.rows.length) {
     const counts = await updateBatchCommitStatus(batch.id);
-    revalidatePath("/imports");
-    revalidatePath(`/imports/${batch.id}`);
-    redirect(`/imports/${batch.id}?ok=${counts.IMPORTED > 0 ? "completed" : "processed"}`);
+    revalidateImportViews(batch.id);
+    return buildImportChunkResult(batch.id, batch.rowsTotal, counts);
   }
 
   if (batch.status === ImportStatus.READY) {
@@ -811,18 +866,19 @@ export async function commitCsvImportAction(formData: FormData) {
   }
 
   const counts = await updateBatchCommitStatus(batch.id);
+  revalidateImportViews(batch.id);
+  return buildImportChunkResult(batch.id, batch.rowsTotal, counts);
+}
 
-  revalidatePath("/");
-  revalidatePath("/matches");
-  revalidatePath("/teams");
-  revalidatePath("/referees");
-  revalidatePath("/comparison");
-  revalidatePath("/trends");
-  revalidatePath("/automation");
-  revalidatePath("/imports");
-  revalidatePath(`/imports/${batch.id}`);
-  if (counts.VALID > 0) {
-    redirect(`/imports/${batch.id}?run=1`);
-  }
-  redirect(`/imports/${batch.id}?ok=${counts.IMPORTED > 0 ? "completed" : "processed"}`);
+export async function commitCsvImportChunkAction(batchId: string): Promise<ImportChunkResult> {
+  const user = await requireUser();
+  return processCsvImportChunk({ userId: user.id, batchId });
+}
+
+export async function commitCsvImportAction(formData: FormData) {
+  const batchId = String(formData.get("batchId") ?? "").trim();
+  if (!batchId) redirect("/imports");
+  const result = await commitCsvImportChunkAction(batchId);
+  if (!result.completed) redirect(`/imports/${batchId}?run=1`);
+  redirect(`/imports/${batchId}?ok=${result.imported > 0 ? "completed" : "processed"}`);
 }

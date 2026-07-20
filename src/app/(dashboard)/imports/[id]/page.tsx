@@ -153,6 +153,11 @@ export default async function ImportPreviewPage({
             <ImportProgressRunner
               batchId={batch.id}
               remaining={counts.VALID}
+              total={batch.rowsTotal}
+              initialImported={counts.IMPORTED}
+              initialDuplicates={counts.DUPLICATE}
+              initialInvalid={counts.INVALID}
+              initialSkipped={counts.SKIPPED}
               actionLabel={externalBatch || batch.source?.type === "API" ? "Zastosuj" : "Zaimportuj"}
               autoRun={importInProgress}
               resume={processedRows > 0 || batch.status === "VALIDATING"}
@@ -180,32 +185,6 @@ export default async function ImportPreviewPage({
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
           <XCircle size={18} />Nie udało się wykonać tej operacji dla obecnego stanu importu.
         </div>
-      ) : null}
-
-      {importCanContinue && (processedRows > 0 || batch.status === "VALIDATING") ? (
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="font-medium">
-                {importInProgress ? "Importowanie spotkań" : "Import został przerwany i można go bezpiecznie wznowić"}
-              </div>
-              <div className="mt-1 text-sm text-zinc-500">
-                Import jest wykonywany w małych partiach, aby strona nie przekraczała limitu czasu Vercela.
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-2xl font-semibold">{progressPercent}%</div>
-              <div className="text-xs text-zinc-500">{processedRows} z {batch.rowsTotal}</div>
-            </div>
-          </div>
-          <div className="mt-4 h-3 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-emerald-600 transition-[width] duration-300"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          <div className="mt-2 text-xs text-zinc-500">Pozostało: {counts.VALID} spotkań.</div>
-        </Card>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

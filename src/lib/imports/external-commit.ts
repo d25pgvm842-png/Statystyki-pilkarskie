@@ -127,6 +127,28 @@ async function resolveTeam(input: {
   candidate?: ExternalTeamCandidate;
 }) {
   const { tx, seasonId, providerCode, directId, candidate } = input;
+
+  // Szybka ścieżka dla istniejącego mapowania drużyny.
+  // Po pierwszym meczu kolejne wiersze nie muszą ponownie czekać na blokadę mapowania.
+  if (candidate?.externalId) {
+    const existingMapping = await findExternalMapping({
+      providerCode,
+      entityType: "TEAM",
+      externalId: candidate.externalId,
+    }, tx);
+    if (existingMapping) {
+      const mappedTeam = await tx.team.findUnique({ where: { id: existingMapping.internalId } });
+      if (mappedTeam) {
+        await tx.seasonTeam.upsert({
+          where: { seasonId_teamId: { seasonId, teamId: mappedTeam.id } },
+          update: {},
+          create: { seasonId, teamId: mappedTeam.id },
+        });
+        return mappedTeam;
+      }
+    }
+  }
+
   const lockKey = candidate?.externalId
     ? `external-team:${providerCode}:${candidate.externalId}`
     : `internal-team:${directId ?? candidate?.name ?? "unknown"}`;
@@ -300,8 +322,6 @@ async function ensureSource(input: {
   externalLeagueId?: string;
   seasonId: string;
 }) {
-  await advisoryLock(input.tx, `external-source:${input.providerCode}:${input.externalLeagueId ?? input.seasonId}`);
-
   const season = await input.tx.season.findUnique({
     where: { id: input.seasonId },
     include: { league: true },
@@ -311,9 +331,31 @@ async function ensureSource(input: {
   const source = input.batchSourceId
     ? await input.tx.dataSource.findUnique({ where: { id: input.batchSourceId } })
     : null;
-  const resolvedSource = source?.providerCode === input.providerCode
-    ? source
-    : await input.tx.dataSource.upsert({
+
+  if (source?.providerCode === input.providerCode) {
+    if (input.externalLeagueId) {
+      const mapping = await findExternalMapping({
+        providerCode: input.providerCode,
+        entityType: "LEAGUE",
+        externalId: input.externalLeagueId,
+      }, input.tx);
+      if (!mapping || mapping.internalId !== season.leagueId) {
+        await advisoryLock(input.tx, `external-source:${input.providerCode}:${input.externalLeagueId}`);
+        await replaceExternalMapping({
+          providerCode: input.providerCode,
+          entityType: "LEAGUE",
+          internalId: season.leagueId,
+          externalId: input.externalLeagueId,
+          externalName: season.league.name,
+          active: true,
+        }, input.tx);
+      }
+    }
+    return source;
+  }
+
+  await advisoryLock(input.tx, `external-source:${input.providerCode}:${input.externalLeagueId ?? input.seasonId}`);
+  const resolvedSource = await input.tx.dataSource.upsert({
     where: { providerCode: input.providerCode },
     update: { name: input.providerName, type: DataSourceType.API, active: true },
     create: {
@@ -335,10 +377,12 @@ async function ensureSource(input: {
     }, input.tx);
   }
 
-  await input.tx.importBatch.update({
-    where: { id: input.batchId },
-    data: { sourceId: resolvedSource.id },
-  });
+  if (input.batchSourceId !== resolvedSource.id) {
+    await input.tx.importBatch.update({
+      where: { id: input.batchId },
+      data: { sourceId: resolvedSource.id },
+    });
+  }
 
   return resolvedSource;
 }
