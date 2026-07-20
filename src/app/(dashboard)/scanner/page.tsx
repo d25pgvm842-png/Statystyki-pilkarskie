@@ -3,11 +3,13 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
+  BookmarkPlus,
   Download,
   Search,
   Target,
   TrendingUp,
 } from "lucide-react";
+import { addAnalysisPickAction } from "@/lib/actions/analysis-journal-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -154,6 +156,7 @@ export default async function ScannerPage({
   query.set("minEdge", String(minEdge));
   query.set("days", String(days));
   query.set("status", status);
+  const scannerReturnTo = `/scanner?${query.toString()}`;
 
   return (
     <div className="grid gap-5">
@@ -378,7 +381,7 @@ export default async function ScannerPage({
                     <th className="p-3">Historia kierunku</th>
                     <th className="p-3">Historia przewagi</th>
                     <th className="p-3">Status</th>
-                    <th className="p-3">Analiza</th>
+                    <th className="p-3">Akcje</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -405,9 +408,31 @@ export default async function ScannerPage({
                         </span>
                       </td>
                       <td className="p-3">
-                        <Link href={`/analysis?matchId=${row.matchId}&lookback=${lookback === null ? "all" : lookback}`} className="font-medium text-emerald-600 hover:underline">
-                          Otwórz
-                        </Link>
+                        <div className="flex flex-col items-start gap-2">
+                          <Link href={`/analysis?matchId=${row.matchId}&lookback=${lookback === null ? "all" : lookback}`} className="font-medium text-emerald-600 hover:underline">
+                            Otwórz analizę
+                          </Link>
+                          <form action={addAnalysisPickAction}>
+                            <input type="hidden" name="returnTo" value={scannerReturnTo} />
+                            <input type="hidden" name="source" value="SCANNER" />
+                            <input type="hidden" name="matchId" value={row.matchId} />
+                            <input type="hidden" name="statKey" value={row.statKey} />
+                            <input type="hidden" name="threshold" value={row.threshold} />
+                            <input type="hidden" name="side" value={row.side} />
+                            <input type="hidden" name="projection" value={row.projection} />
+                            <input type="hidden" name="edge" value={row.edge} />
+                            <input type="hidden" name="evidenceStatus" value={row.evidenceStatus} />
+                            <input type="hidden" name="backtestSignals" value={row.sideBacktestSignals} />
+                            <input type="hidden" name="backtestHitRate" value={row.sideBacktestHitRate ?? ""} />
+                            <input type="hidden" name="edgeBacktestSignals" value={row.edgeBacktestSignals} />
+                            <input type="hidden" name="edgeBacktestHitRate" value={row.edgeBacktestHitRate ?? ""} />
+                            <input type="hidden" name="homeSample" value={row.homeSample} />
+                            <input type="hidden" name="awaySample" value={row.awaySample} />
+                            <Button type="submit" size="sm" variant="secondary">
+                              <BookmarkPlus size={14} className="mr-1" />Do dziennika
+                            </Button>
+                          </form>
+                        </div>
                       </td>
                     </tr>
                   ))}

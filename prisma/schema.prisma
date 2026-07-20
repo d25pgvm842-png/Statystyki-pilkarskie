@@ -51,12 +51,38 @@ enum AuditEntityType {
   REFEREE
   SEASON
   LEAGUE
+  ANALYSIS_PICK
 }
 
 enum LineScope {
   MATCH_TOTAL
   TEAM_FOR
   TEAM_AGAINST
+}
+
+enum AnalysisPickSide {
+  OVER
+  UNDER
+}
+
+enum AnalysisPickStatus {
+  WATCHING
+  PLAYED
+  REJECTED
+  SETTLED
+  VOID
+}
+
+enum AnalysisPickResult {
+  WIN
+  LOSS
+  PUSH
+  VOID
+}
+
+enum AnalysisPickSource {
+  SCANNER
+  MANUAL
 }
 
 enum ExternalEntityType {
@@ -86,6 +112,7 @@ model User {
   imports      ImportBatch[]
   overrides    DataOverride[]
   analysisNotes MatchAnalysisNote[]
+  analysisPicks AnalysisPick[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -207,6 +234,7 @@ model Match {
   overrides           DataOverride[]
   analysisNotes MatchAnalysisNote[]
   fieldObservations MatchFieldObservation[]
+  analysisPicks AnalysisPick[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -340,6 +368,47 @@ model MatchAnalysisNote {
   @@unique([matchId, userId])
   @@index([userId, updatedAt])
 }
+model AnalysisPick {
+  id                      String             @id @default(cuid())
+  userId                  String
+  matchId                 String
+  fingerprint             String
+  source                  AnalysisPickSource @default(MANUAL)
+  statKey                 String
+  statLabel               String
+  scope                   LineScope          @default(MATCH_TOTAL)
+  threshold               Float
+  side                    AnalysisPickSide
+  status                  AnalysisPickStatus @default(WATCHING)
+  result                  AnalysisPickResult?
+  projection              Float?
+  edge                    Float?
+  evidenceStatus          String?
+  backtestSignals         Int?
+  backtestHitRate         Float?
+  edgeBacktestSignals     Int?
+  edgeBacktestHitRate     Float?
+  homeSample              Int?
+  awaySample              Int?
+  bookmaker               String?
+  odds                    Float?
+  closingOdds             Float?
+  stake                   Float?
+  actualValue             Float?
+  note                    String?
+  placedAt                DateTime?
+  settledAt               DateTime?
+  user                    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match                   Match              @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@unique([userId, fingerprint])
+  @@index([userId, status, createdAt])
+  @@index([matchId])
+  @@index([status, matchId])
+}
+
 model CurrentDataSyncRun {
   id             String                   @id @default(cuid())
   seasonId       String
