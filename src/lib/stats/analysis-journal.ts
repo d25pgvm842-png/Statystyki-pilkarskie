@@ -68,16 +68,18 @@ export function buildAnalysisPickFingerprint(input: {
   matchId: string;
   statKey: string;
   scope: string;
+  selectedTeamId?: string | null;
   threshold: number;
   side: JournalSide;
 }) {
-  return [
+  const parts = [
     input.matchId.trim(),
     input.statKey.trim(),
     input.scope.trim(),
-    input.threshold.toFixed(3),
-    input.side,
-  ].join("|");
+  ];
+  if (input.selectedTeamId) parts.push(input.selectedTeamId.trim());
+  parts.push(input.threshold.toFixed(3), input.side);
+  return parts.join("|");
 }
 
 export function settleTotalSelection(input: {

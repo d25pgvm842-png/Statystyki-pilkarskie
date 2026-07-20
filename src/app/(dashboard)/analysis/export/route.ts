@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { loadMatchAnalysis, type AnalysisLookback } from "@/lib/data/match-analysis";
+import { loadMarketWorkshop } from "@/lib/data/market-workshop";
+import { isHalfLine, type MarketWorkshopTarget } from "@/lib/stats/market-workshop";
+import { TREND_STAT_DEFINITIONS, trendDefinition, type TrendStatKey } from "@/lib/stats/trends";
 
 function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -18,6 +21,16 @@ function safeFileName(value: string) {
 function lookbackFrom(value: string | null): AnalysisLookback {
   if (value === "5" || value === "10" || value === "20") return Number(value) as 5 | 10 | 20;
   return value === "all" ? null : 10;
+}
+
+function workshopTarget(value: string | null): MarketWorkshopTarget {
+  if (value === "HOME_TEAM" || value === "AWAY_TEAM") return value;
+  return "MATCH_TOTAL";
+}
+
+function workshopOdds(value: string | null) {
+  const parsed = Number(value);
+  return value && Number.isFinite(parsed) && parsed > 1 && parsed <= 1000 ? parsed : null;
 }
 
 function number(value: number | null | undefined) {
@@ -39,6 +52,25 @@ export async function GET(request: Request) {
   const lookback = lookbackFrom(url.searchParams.get("lookback"));
   const analysis = await loadMatchAnalysis({ matchId, userId: user.id, lookback });
   if (!analysis) notFound();
+  const statParam = url.searchParams.get("workshopStatKey");
+  const statKey = TREND_STAT_DEFINITIONS.some((item) => item.key === statParam)
+    ? statParam as TrendStatKey
+    : "corners";
+  const target = workshopTarget(url.searchParams.get("workshopTarget"));
+  const definition = trendDefinition(statKey)!;
+  const defaultLines = target === "MATCH_TOTAL" ? definition.totalLines : definition.teamLines;
+  const parsedLine = Number(url.searchParams.get("workshopLine"));
+  const line = isHalfLine(parsedLine) ? parsedLine : defaultLines[1] ?? defaultLines[0];
+  const loadedWorkshop = await loadMarketWorkshop({
+    matchId,
+    statKey,
+    target,
+    line,
+    lookback,
+    overOdds: workshopOdds(url.searchParams.get("workshopOverOdds")),
+    underOdds: workshopOdds(url.searchParams.get("workshopUnderOdds")),
+  });
+  const workshop = loadedWorkshop?.workshop ?? null;
 
   const rows: unknown[][] = [
     ["sekcja", "rynek", "metryka", "gospodarz", "gość", "suma_lub_wartość", "próba", "uwagi"],
@@ -85,6 +117,32 @@ export async function GET(request: Request) {
       `${market.home.comparableSample}/${market.away.comparableSample}`,
       `korekta gospodarz ${number(market.home.adjustment)}; korekta gość ${number(market.away.adjustment)}; koszyk obronny gościa K${market.home.currentOpponent?.bucket ?? ""}; koszyk obronny gospodarza K${market.away.currentOpponent?.bucket ?? ""}`,
     ]);
+  }
+
+  if (workshop) {
+    rows.push([
+      "warsztat_rynku",
+      workshop.statLabel,
+      `${workshop.target}_${workshop.line}`,
+      number(workshop.rawProjection),
+      number(workshop.adjustedProjection),
+      number(workshop.projection),
+      workshop.effectiveSample,
+      `${workshop.modelVersion}; pokrycie ${number(workshop.coverage)}%; wiarygodność ${workshop.confidence}; marża ${number(workshop.bookmakerMargin)}%`,
+    ]);
+    for (const side of ["OVER", "UNDER"] as const) {
+      const quote = workshop.sides[side];
+      rows.push([
+        "warsztat_rynku",
+        workshop.statLabel,
+        `${side}_${workshop.line}`,
+        number(quote.modelProbability),
+        number(quote.fairOdds),
+        number(quote.bookmakerOdds),
+        workshop.effectiveSample,
+        `implied ${number(quote.impliedProbability)}%; no-vig ${number(quote.marketProbability)}%; model vs rynek ${number(quote.modelVsMarket)} pp; EV ${number(quote.expectedValue)}%; status ${quote.status}`,
+      ]);
+    }
   }
 
   for (const item of analysis.h2h) {

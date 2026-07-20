@@ -3,6 +3,8 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
+  BadgePercent,
+  Calculator,
   CalendarDays,
   Download,
   Layers3,
@@ -14,12 +16,22 @@ import {
 } from "lucide-react";
 import { createCustomLineAction } from "@/lib/actions/custom-line-actions";
 import { saveMatchAnalysisNoteAction } from "@/lib/actions/match-analysis-actions";
+import { saveMarketWorkshopPickAction } from "@/lib/actions/market-workshop-actions";
 import { requireUser } from "@/lib/auth";
 import { loadMatchAnalysis, type AnalysisLookback } from "@/lib/data/match-analysis";
+import { loadMarketWorkshop } from "@/lib/data/market-workshop";
 import { prisma } from "@/lib/db";
 import { marketStrengthBucketLabel } from "@/lib/stats/market-ratings";
 import { opponentStrengthQualityLabel } from "@/lib/stats/opponent-strength";
-import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
+import {
+  isHalfLine,
+  marketWorkshopConfidenceLabel,
+  marketWorkshopStatusLabel,
+  marketWorkshopTargetLabel,
+  type MarketWorkshopStatus,
+  type MarketWorkshopTarget,
+} from "@/lib/stats/market-workshop";
+import { TREND_STAT_DEFINITIONS, trendDefinition, type TrendStatKey } from "@/lib/stats/trends";
 import { formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +48,33 @@ const scopeLabels: Record<string, string> = {
 
 function stringParam(value: string | string[] | undefined) {
   return typeof value === "string" ? value : "";
+}
+
+function oddsParam(value: string) {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 1 && parsed <= 1000 ? parsed : null;
+}
+
+function percent(value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : `${formatNumber(value, 1)}%`;
+}
+
+function workshopTargetParam(value: string): MarketWorkshopTarget {
+  if (value === "HOME_TEAM" || value === "AWAY_TEAM") return value;
+  return "MATCH_TOTAL";
+}
+
+function workshopLineParam(value: string) {
+  const parsed = Number(value);
+  return isHalfLine(parsed) ? parsed : null;
+}
+
+function workshopStatusClass(value: MarketWorkshopStatus) {
+  if (value === "POTENTIAL_VALUE") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  if (value === "WATCH") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  if (value === "NO_EDGE") return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
 }
 
 function rate(value: number | null | undefined) {
@@ -105,14 +144,57 @@ export default async function MatchAnalysisPage({
       ? null
       : 10;
   const lookbackValue = lookback === null ? "all" : String(lookback);
-  const analysis = selectedMatch
-    ? await loadMatchAnalysis({ matchId: selectedMatch.id, userId: user.id, lookback })
-    : null;
+  const workshopStatParam = stringParam(params.workshopStatKey);
+  const workshopStatKey = TREND_STAT_DEFINITIONS.some((item) => item.key === workshopStatParam)
+    ? workshopStatParam as TrendStatKey
+    : "corners";
+  const workshopTarget = workshopTargetParam(stringParam(params.workshopTarget));
+  const workshopDefinition = trendDefinition(workshopStatKey)!;
+  const defaultWorkshopLines = workshopTarget === "MATCH_TOTAL"
+    ? workshopDefinition.totalLines
+    : workshopDefinition.teamLines;
+  const workshopLineText = stringParam(params.workshopLine);
+  const parsedWorkshopLine = workshopLineParam(workshopLineText);
+  const workshopLineInvalid = Boolean(workshopLineText) && parsedWorkshopLine === null;
+  const workshopLine = parsedWorkshopLine
+    ?? defaultWorkshopLines[1]
+    ?? defaultWorkshopLines[0];
+  const workshopOverOddsText = stringParam(params.workshopOverOdds);
+  const workshopUnderOddsText = stringParam(params.workshopUnderOdds);
+  const workshopBookmaker = stringParam(params.workshopBookmaker);
+  const workshopNote = stringParam(params.workshopNote);
+  const workshopOverOdds = oddsParam(workshopOverOddsText);
+  const workshopUnderOdds = oddsParam(workshopUnderOddsText);
+  const [analysis, workshopLoaded] = selectedMatch
+    ? await Promise.all([
+        loadMatchAnalysis({ matchId: selectedMatch.id, userId: user.id, lookback }),
+        workshopLineInvalid
+          ? Promise.resolve(null)
+          : loadMarketWorkshop({
+              matchId: selectedMatch.id,
+              statKey: workshopStatKey,
+              target: workshopTarget,
+              line: workshopLine,
+              lookback,
+              overOdds: workshopOverOdds,
+              underOdds: workshopUnderOdds,
+            }),
+      ])
+    : [null, null] as const;
+  const workshop = workshopLoaded?.workshop ?? null;
+  const workshopCapturedAt = new Date().toISOString();
 
   const currentParams = new URLSearchParams();
   if (selectedSeason) currentParams.set("seasonId", selectedSeason.id);
   if (selectedMatch) currentParams.set("matchId", selectedMatch.id);
   currentParams.set("lookback", lookbackValue);
+  currentParams.set("workshopStatKey", workshopStatKey);
+  currentParams.set("workshopTarget", workshopTarget);
+  currentParams.set("workshopLine", String(workshopLine));
+  if (workshopOverOddsText) currentParams.set("workshopOverOdds", workshopOverOddsText);
+  if (workshopUnderOddsText) currentParams.set("workshopUnderOdds", workshopUnderOddsText);
+  if (workshopBookmaker) currentParams.set("workshopBookmaker", workshopBookmaker);
+  if (workshopNote) currentParams.set("workshopNote", workshopNote);
   const returnTo = `/analysis?${currentParams.toString()}`;
 
   return (
@@ -145,6 +227,27 @@ export default async function MatchAnalysisPage({
       {stringParam(params.created) === "1" ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
           Własna linia została dodana do analizy.
+        </div>
+      ) : null}
+
+      {workshopLineInvalid ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          Warsztat obsługuje obecnie wyłącznie linie połówkowe, np. 8,5 lub 9,5. Linia całkowita nie została przeliczona.
+        </div>
+      ) : null}
+      {stringParam(params.workshopSaved) ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+          Snapshot warsztatu został zapisany w Dzienniku.
+        </div>
+      ) : null}
+      {stringParam(params.workshopAlready) ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          Taki sam mecz, rynek, drużyna, linia i kierunek już znajdują się w Dzienniku.
+        </div>
+      ) : null}
+      {stringParam(params.workshopError) ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          Nie udało się zapisać warsztatu. Sprawdź status meczu oraz kurs wybranej strony.
         </div>
       ) : null}
 
@@ -321,6 +424,98 @@ export default async function MatchAnalysisPage({
                 </tbody>
               </table>
             </div>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><BadgePercent size={18} />Warsztat rynku: fair odds i EV</CardTitle>
+              <p className="text-sm text-zinc-500">
+                Model empiryczny v1 dla linii połówkowych. Kursy wpisujesz ręcznie; brak jednego kursu pozwala policzyć EV, ale nie marżę i no-vig.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              {workshopLineInvalid ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                  Warsztat v1 obsługuje wyłącznie linie połówkowe, np. 9,5. Podana linia nie została przeliczona.
+                </div>
+              ) : null}
+              <Form action="/analysis" className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_0.65fr_0.65fr_0.65fr_1fr_1.5fr_auto]">
+                <input type="hidden" name="seasonId" value={selectedSeason?.id ?? ""} />
+                <input type="hidden" name="matchId" value={selectedMatch?.id ?? ""} />
+                <input type="hidden" name="lookback" value={lookbackValue} />
+                <Select name="workshopStatKey" defaultValue={workshopStatKey}>
+                  {TREND_STAT_DEFINITIONS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                </Select>
+                <Select name="workshopTarget" defaultValue={workshopTarget}>
+                  <option value="MATCH_TOTAL">Suma meczu</option>
+                  <option value="HOME_TEAM">Suma: {selectedMatch?.homeTeam.name ?? "gospodarz"}</option>
+                  <option value="AWAY_TEAM">Suma: {selectedMatch?.awayTeam.name ?? "gość"}</option>
+                </Select>
+                <Input name="workshopLine" type="number" min="0.5" max="499.5" step="0.5" defaultValue={workshopLine} aria-label="Linia" />
+                <Input name="workshopOverOdds" type="number" min="1.01" max="1000" step="0.01" defaultValue={workshopOverOddsText} placeholder="Kurs O" />
+                <Input name="workshopUnderOdds" type="number" min="1.01" max="1000" step="0.01" defaultValue={workshopUnderOddsText} placeholder="Kurs U" />
+                <Input name="workshopBookmaker" maxLength={120} defaultValue={workshopBookmaker} placeholder="Bukmacher" />
+                <Input name="workshopNote" maxLength={2000} defaultValue={workshopNote} placeholder="Notatka do snapshotu" />
+                <Button type="submit"><Calculator size={16} className="mr-2" />Przelicz</Button>
+              </Form>
+
+              {workshop ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Zakres</div><div className="mt-1 font-semibold">{marketWorkshopTargetLabel(workshop.target, selectedMatch?.homeTeam.name, selectedMatch?.awayTeam.name)}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Surowa projekcja</div><div className="mt-1 text-xl font-semibold">{formatNumber(workshop.rawProjection)}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Skorygowana</div><div className="mt-1 text-xl font-semibold">{formatNumber(workshop.adjustedProjection)}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Próba i pokrycie</div><div className="mt-1 text-xl font-semibold">n={workshop.effectiveSample} · {formatNumber(workshop.coverage, 0)}%</div><div className="text-xs text-zinc-500">{marketWorkshopConfidenceLabel(workshop.confidence)}</div></div>
+                    <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Marża bukmachera</div><div className="mt-1 text-xl font-semibold">{percent(workshop.bookmakerMargin)}</div><div className="text-xs text-zinc-500">{workshop.modelVersion}</div></div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                    <table className="w-full min-w-[1120px] text-sm">
+                      <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/70">
+                        <tr><th className="p-3">Strona</th><th className="p-3">Model</th><th className="p-3">Fair odds</th><th className="p-3">Kurs</th><th className="p-3">Implied</th><th className="p-3">No-vig</th><th className="p-3">Model vs rynek</th><th className="p-3">EV</th><th className="p-3">Status</th><th className="p-3">Dziennik</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                        {(["OVER", "UNDER"] as const).map((side) => {
+                          const row = workshop.sides[side];
+                          return (
+                            <tr key={side}>
+                              <td className="p-3 text-lg font-semibold">{side} {workshop.line}</td>
+                              <td className="p-3 font-semibold">{percent(row.modelProbability)}</td>
+                              <td className="p-3">{formatNumber(row.fairOdds, 2)}</td>
+                              <td className="p-3">{formatNumber(row.bookmakerOdds, 2)}</td>
+                              <td className="p-3">{percent(row.impliedProbability)}</td>
+                              <td className="p-3">{percent(row.marketProbability)}</td>
+                              <td className={`p-3 font-medium ${row.modelVsMarket !== null && row.modelVsMarket >= 0 ? "text-emerald-600" : "text-red-600"}`}>{row.modelVsMarket === null ? "—" : `${row.modelVsMarket >= 0 ? "+" : ""}${formatNumber(row.modelVsMarket, 1)} pp`}</td>
+                              <td className={`p-3 text-lg font-semibold ${row.expectedValue !== null && row.expectedValue >= 0 ? "text-emerald-600" : "text-red-600"}`}>{percent(row.expectedValue)}</td>
+                              <td className="p-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${workshopStatusClass(row.status)}`}>{marketWorkshopStatusLabel(row.status)}</span></td>
+                              <td className="p-3">
+                                {row.bookmakerOdds ? (
+                                  <form action={saveMarketWorkshopPickAction}>
+                                    <input type="hidden" name="returnTo" value={returnTo} />
+                                    <input type="hidden" name="matchId" value={selectedMatch?.id ?? ""} />
+                                    <input type="hidden" name="statKey" value={workshopStatKey} />
+                                    <input type="hidden" name="target" value={workshopTarget} />
+                                    <input type="hidden" name="line" value={workshopLine} />
+                                    <input type="hidden" name="side" value={side} />
+                                    <input type="hidden" name="lookback" value={lookbackValue} />
+                                    <input type="hidden" name="overOdds" value={workshopOverOddsText} />
+                                    <input type="hidden" name="underOdds" value={workshopUnderOddsText} />
+                                    <input type="hidden" name="bookmaker" value={workshopBookmaker} />
+                                    <input type="hidden" name="note" value={workshopNote} />
+                                    <input type="hidden" name="quoteCapturedAt" value={workshopCapturedAt} />
+                                    <Button type="submit" variant="secondary" size="sm"><Save size={14} className="mr-1" />Zapisz</Button>
+                                  </form>
+                                ) : <span className="text-xs text-zinc-500">wpisz kurs</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : <div className="text-sm text-zinc-500">Brak danych do wyliczenia warsztatu dla wybranego meczu.</div>}
+            </CardContent>
           </Card>
 
           <Card className="overflow-hidden">

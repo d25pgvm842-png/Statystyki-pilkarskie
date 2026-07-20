@@ -28,6 +28,7 @@ import {
   selectionProfit,
   type JournalAnalyticsRow,
 } from "@/lib/stats/analysis-journal";
+import { marketWorkshopStatusLabel, type MarketWorkshopStatus } from "@/lib/stats/market-workshop";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
 import { formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -467,6 +468,11 @@ export default async function JournalPage({
             odds: item.odds,
             closingOdds: item.closingOdds,
           });
+          const selectedTeamName = item.selectedTeamId === item.match.homeTeam.id
+            ? item.match.homeTeam.name
+            : item.selectedTeamId === item.match.awayTeam.id
+              ? item.match.awayTeam.name
+              : null;
           return (
             <Card key={item.id}>
               <CardHeader className="gap-3">
@@ -497,6 +503,26 @@ export default async function JournalPage({
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Wynik finansowy</div><div className={`mt-1 text-xl font-semibold ${profit !== null && profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{currency(profit)}</div></div>
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">CLV</div><div className="mt-1 text-xl font-semibold">{percent(clv)}</div></div>
                 </div>
+
+                {item.modelVersion ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">Snapshot warsztatu rynku</div>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium dark:bg-zinc-900">{item.modelVersion}</span>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                      <div><div className="text-xs text-zinc-500">Model</div><div className="font-semibold">{percent(item.modelProbability)}</div></div>
+                      <div><div className="text-xs text-zinc-500">Fair odds</div><div className="font-semibold">{formatNumber(item.fairOdds, 2)}</div></div>
+                      <div><div className="text-xs text-zinc-500">Rynek no-vig</div><div className="font-semibold">{percent(item.marketProbability)}</div></div>
+                      <div><div className="text-xs text-zinc-500">EV</div><div className={`font-semibold ${item.expectedValue !== null && item.expectedValue >= 0 ? "text-emerald-600" : "text-red-600"}`}>{percent(item.expectedValue)}</div></div>
+                      <div><div className="text-xs text-zinc-500">Próba / pokrycie</div><div className="font-semibold">n={item.modelSample ?? 0} · {percent(item.modelCoverage)}</div></div>
+                      <div><div className="text-xs text-zinc-500">Status</div><div className="font-semibold">{item.marketStatus ? marketWorkshopStatusLabel(item.marketStatus as MarketWorkshopStatus) : "—"}</div></div>
+                    </div>
+                    <div className="mt-2 text-xs text-zinc-500">
+                      {selectedTeamName ? `Drużyna: ${selectedTeamName} · ` : ""}kurs przeciwny {formatNumber(item.oppositeOdds, 2)} · marża {percent(item.bookmakerMargin)} · wiarygodność {item.modelConfidence ?? "—"} · pobrano {item.quoteCapturedAt ? dateTime(item.quoteCapturedAt) : "—"}
+                    </div>
+                  </div>
+                ) : null}
 
                 <form action={updateAnalysisPickAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[0.9fr_1fr_0.7fr_0.7fr_0.7fr_2fr_auto]">
                   <input type="hidden" name="id" value={item.id} />

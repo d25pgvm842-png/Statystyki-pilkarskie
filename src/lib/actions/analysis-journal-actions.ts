@@ -333,7 +333,6 @@ export async function settleFinishedAnalysisPicksAction(formData: FormData) {
     where: {
       userId: user.id,
       status: AnalysisPickStatus.PLAYED,
-      scope: LineScope.MATCH_TOTAL,
       match: { status: MatchStatus.FINISHED },
     },
     include: {
@@ -347,9 +346,22 @@ export async function settleFinishedAnalysisPicksAction(formData: FormData) {
     if (!definition || !stats) return [];
     const home = stats[definition.home];
     const away = stats[definition.away];
-    if (typeof home !== "number" || typeof away !== "number") return [];
 
-    const actualValue = home + away;
+    let actualValue: number | null = null;
+    if (item.scope === LineScope.MATCH_TOTAL) {
+      if (typeof home === "number" && typeof away === "number") actualValue = home + away;
+    } else if (item.selectedTeamId) {
+      const selectedValue = item.match.homeTeamId === item.selectedTeamId ? home
+        : item.match.awayTeamId === item.selectedTeamId ? away
+          : null;
+      const opponentValue = item.match.homeTeamId === item.selectedTeamId ? away
+        : item.match.awayTeamId === item.selectedTeamId ? home
+          : null;
+      const value = item.scope === LineScope.TEAM_FOR ? selectedValue : opponentValue;
+      if (typeof value === "number") actualValue = value;
+    }
+    if (actualValue === null) return [];
+
     const result = settleTotalSelection({
       actual: actualValue,
       threshold: item.threshold,
