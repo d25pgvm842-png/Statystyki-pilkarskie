@@ -2,11 +2,12 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { loadMarketRatings } from "@/lib/data/market-ratings";
 import {
-  marketRatingBucketLabel,
   marketRatingQualityLabel,
+  marketStrengthBucketLabel,
   type RatingLookback,
   type RatingScope,
   type RatingVenue,
+  type StrengthBucket,
 } from "@/lib/stats/market-ratings";
 import {
   TREND_STAT_DEFINITIONS,
@@ -21,6 +22,13 @@ function csvCell(value: unknown) {
 function lookback(value: string | null): RatingLookback {
   if (value === "5" || value === "10" || value === "20") return Number(value) as 5 | 10 | 20;
   return value === "all" ? null : 10;
+}
+
+function strengthBucket(value: string | null): StrengthBucket | null {
+  if (value === "1" || value === "2" || value === "3" || value === "4") {
+    return Number(value) as StrengthBucket;
+  }
+  return null;
 }
 
 export async function GET(request: Request) {
@@ -44,6 +52,7 @@ export async function GET(request: Request) {
   const minSample = [1, 3, 5, 10].includes(Number(url.searchParams.get("minSample")))
     ? Number(url.searchParams.get("minSample"))
     : 3;
+  const selectedBucket = strengthBucket(url.searchParams.get("bucket"));
 
   const loaded = await loadMarketRatings({
     seasonId,
@@ -71,11 +80,15 @@ export async function GET(request: Request) {
     "roznica_procent",
     "percentyl",
     "rating_0_100",
-    "koszyk",
+    "koszyk_1_4",
+    "opis_koszyka",
     "jakosc_proby",
+    "regula_koszykow",
   ]];
 
   for (const row of loaded.ratings.rows) {
+    if (selectedBucket !== null && row.strengthBucket !== selectedBucket) continue;
+
     rows.push([
       row.position,
       row.teamName,
@@ -92,8 +105,10 @@ export async function GET(request: Request) {
       row.deltaPercent,
       row.percentile,
       row.rating,
-      marketRatingBucketLabel(row.bucket),
+      row.strengthBucket,
+      marketStrengthBucketLabel(row.strengthBucket),
       marketRatingQualityLabel(row.quality),
+      loaded.ratings.bucketRule,
     ]);
   }
 
@@ -103,7 +118,7 @@ export async function GET(request: Request) {
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="ratingi-${safeLeague}-${safeSeason}-${statKey}.csv"`,
+      "Content-Disposition": `attachment; filename="koszyki-${safeLeague}-${safeSeason}-${statKey}.csv"`,
       "Cache-Control": "no-store",
     },
   });

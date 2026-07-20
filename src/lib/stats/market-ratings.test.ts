@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildMarketRatings,
   marketRatingBucketLabel,
+  marketStrengthBucketLabel,
   type RatingMatch,
 } from "@/lib/stats/market-ratings";
 
@@ -51,11 +52,14 @@ test("rating 0-100 porządkuje drużyny według średniej", () => {
   const beta = result.rows.find((row) => row.teamId === "B");
   assert.equal(alpha?.position, 1);
   assert.equal(alpha?.rating, 100);
+  assert.equal(alpha?.strengthBucket, 1);
   assert.equal(beta?.rating, 0);
+  assert.equal(beta?.strengthBucket, 4);
   assert.equal(marketRatingBucketLabel(alpha?.bucket ?? null), "wysoki");
+  assert.equal(marketStrengthBucketLabel(alpha?.strengthBucket ?? null), "Koszyk 1 · najwyższa wartość");
 });
 
-test("remisy otrzymują ten sam percentyl i pozycję", () => {
+test("remisy otrzymują ten sam percentyl, pozycję i koszyk", () => {
   const result = buildMarketRatings({
     teams,
     matches: [
@@ -74,6 +78,34 @@ test("remisy otrzymują ten sam percentyl i pozycję", () => {
   const beta = result.rows.find((row) => row.teamId === "B");
   assert.equal(alpha?.position, beta?.position);
   assert.equal(alpha?.rating, beta?.rating);
+  assert.equal(alpha?.strengthBucket, beta?.strengthBucket);
+});
+
+test("cztery różne percentyle trafiają do czterech dynamicznych koszyków", () => {
+  const result = buildMarketRatings({
+    teams: [
+      { id: "A", name: "Alpha" },
+      { id: "B", name: "Beta" },
+      { id: "C", name: "Gamma" },
+      { id: "D", name: "Delta" },
+    ],
+    matches: [
+      match({ id: "1", date: "2026-01-01", home: "A", away: "B", homeCorners: 8, awayCorners: 6 }),
+      match({ id: "2", date: "2026-01-02", home: "C", away: "D", homeCorners: 4, awayCorners: 2 }),
+    ],
+    statKey: "corners",
+    scope: "TEAM_FOR",
+    venue: "ALL",
+    lookback: null,
+    minSample: 1,
+  });
+
+  assert.equal(result.rows.find((row) => row.teamId === "A")?.strengthBucket, 1);
+  assert.equal(result.rows.find((row) => row.teamId === "B")?.strengthBucket, 2);
+  assert.equal(result.rows.find((row) => row.teamId === "C")?.strengthBucket, 3);
+  assert.equal(result.rows.find((row) => row.teamId === "D")?.strengthBucket, 4);
+  assert.deepEqual(result.bucketSummaries.map((row) => row.teams), [1, 1, 1, 1]);
+  assert.match(result.bucketRule, /Remisy zachowują ten sam percentyl i koszyk/);
 });
 
 test("filtr miejsca i lookback liczą ostatnie 5 meczów domowych drużyny", () => {
@@ -117,9 +149,10 @@ test("brak statystyki nie jest zamieniany na zero", () => {
   assert.equal(alpha?.sample, 0);
   assert.equal(alpha?.average, null);
   assert.equal(alpha?.rating, null);
+  assert.equal(alpha?.strengthBucket, null);
 });
 
-test("minimum próby wyklucza rating, ale zachowuje średnią informacyjną", () => {
+test("minimum próby wyklucza rating i koszyk, ale zachowuje średnią informacyjną", () => {
   const result = buildMarketRatings({
     teams: teams.slice(0, 2),
     matches: [
@@ -136,6 +169,7 @@ test("minimum próby wyklucza rating, ale zachowuje średnią informacyjną", ()
   assert.equal(alpha?.average, 7);
   assert.equal(alpha?.eligible, false);
   assert.equal(alpha?.rating, null);
+  assert.equal(alpha?.strengthBucket, null);
 });
 
 test("granica czasu usuwa przyszłe mecze z ratingu", () => {

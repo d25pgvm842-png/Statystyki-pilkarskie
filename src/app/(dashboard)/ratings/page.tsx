@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   BarChart3,
   Download,
+  Layers3,
   Search,
   Trophy,
   Users,
@@ -12,13 +13,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { loadMarketRatings } from "@/lib/data/market-ratings";
 import {
-  marketRatingBucketLabel,
   marketRatingQualityLabel,
-  type RatingBucket,
+  marketStrengthBucketLabel,
   type RatingLookback,
   type RatingQuality,
   type RatingScope,
   type RatingVenue,
+  type StrengthBucket,
 } from "@/lib/stats/market-ratings";
 import {
   TREND_STAT_DEFINITIONS,
@@ -50,11 +51,18 @@ function ratingLookback(value: string): RatingLookback {
   return value === "all" ? null : 10;
 }
 
-function bucketClass(value: RatingBucket | null) {
-  if (value === "HIGH") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
-  if (value === "ABOVE_AVERAGE") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
-  if (value === "BELOW_AVERAGE") return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
-  if (value === "LOW") return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+function strengthBucketParam(value: string): StrengthBucket | null {
+  if (value === "1" || value === "2" || value === "3" || value === "4") {
+    return Number(value) as StrengthBucket;
+  }
+  return null;
+}
+
+function bucketClass(value: StrengthBucket | null) {
+  if (value === 1) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  if (value === 2) return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  if (value === 3) return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+  if (value === 4) return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
   return "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
 }
 
@@ -98,6 +106,7 @@ export default async function RatingsPage({
   const minSample = [1, 3, 5, 10].includes(Number(stringParam(params.minSample)))
     ? Number(stringParam(params.minSample))
     : 3;
+  const selectedBucket = strengthBucketParam(stringParam(params.bucket));
 
   const loaded = selectedSeason
     ? await loadMarketRatings({
@@ -111,7 +120,10 @@ export default async function RatingsPage({
     : null;
 
   const ratings = loaded?.ratings ?? null;
-  const topRows = ratings?.rows.filter((row) => row.rating !== null).slice(0, 3) ?? [];
+  const visibleRows = ratings?.rows.filter(
+    (row) => selectedBucket === null || row.strengthBucket === selectedBucket,
+  ) ?? [];
+  const topRows = ratings?.rows.filter((row) => row.rating !== null).slice(0, 2) ?? [];
   const query = new URLSearchParams();
   if (selectedSeason) query.set("seasonId", selectedSeason.id);
   query.set("statKey", statKey);
@@ -119,6 +131,7 @@ export default async function RatingsPage({
   query.set("venue", venue);
   query.set("lookback", lookback === null ? "all" : String(lookback));
   query.set("minSample", String(minSample));
+  if (selectedBucket !== null) query.set("bucket", String(selectedBucket));
 
   return (
     <div className="grid gap-5">
@@ -129,7 +142,7 @@ export default async function RatingsPage({
             <h1 className="text-2xl font-semibold">Rankingi rynkowe</h1>
           </div>
           <p className="mt-1 text-sm text-zinc-500">
-            Rating 0–100 i percentyl na tle wybranej ligi, sezonu, rynku oraz splitu dom/wyjazd.
+            Rating 0–100, percentyl i dynamiczny koszyk 1–4 dla wybranej ligi, sezonu, rynku oraz splitu dom/wyjazd.
           </p>
         </div>
         {ratings ? (
@@ -143,12 +156,12 @@ export default async function RatingsPage({
       </div>
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
-        Wyższy rating oznacza wyższą obserwowaną wartość statystyki, a nie „lepszą” drużynę. Dla fauli, kartek lub wartości oddawanych rywalom wysoki rating może oznaczać większą skłonność do danego zdarzenia.
+        Koszyki są liczone od nowa dla każdej kombinacji ligi, sezonu, rynku, zakresu, miejsca i minimum próby. Koszyk 1 oznacza najwyższą wartość statystyki, nie ogólną siłę drużyny. {ratings?.bucketRule ?? ""}
       </div>
 
       <Card>
         <CardContent>
-          <Form action="/ratings" className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.35fr_1fr_1fr_0.8fr_0.8fr_0.7fr_auto]">
+          <Form action="/ratings" className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.35fr_1fr_1fr_0.8fr_0.8fr_0.7fr_0.8fr_auto]">
             <Select name="seasonId" defaultValue={selectedSeason?.id}>
               {seasons.map((season) => (
                 <option key={season.id} value={season.id}>{season.league.name} · {season.name}</option>
@@ -181,6 +194,13 @@ export default async function RatingsPage({
               <option value="5">min. 5</option>
               <option value="10">min. 10</option>
             </Select>
+            <Select name="bucket" defaultValue={selectedBucket === null ? "" : String(selectedBucket)}>
+              <option value="">Wszystkie koszyki</option>
+              <option value="1">Koszyk 1</option>
+              <option value="2">Koszyk 2</option>
+              <option value="3">Koszyk 3</option>
+              <option value="4">Koszyk 4</option>
+            </Select>
             <Button type="submit"><Search size={16} className="mr-2" />Policz</Button>
           </Form>
         </CardContent>
@@ -203,26 +223,57 @@ export default async function RatingsPage({
               <div className="mt-1 text-3xl font-semibold">{ratings.teamsWithData}/{ratings.teamsTotal}</div>
               <div className="text-xs text-zinc-500">{ratings.eligibleTeams} spełnia minimum próby</div>
             </Card>
-            {topRows.slice(0, 2).map((row, index) => (
+            {topRows.map((row, index) => (
               <Card key={row.teamId} className="p-4">
                 <Trophy size={18} className="mb-2 text-emerald-600" />
                 <div className="text-xs text-zinc-500">#{index + 1} w rankingu</div>
                 <div className="mt-1 font-semibold">{row.teamName}</div>
                 <div className="text-2xl font-semibold">{formatNumber(row.average)}</div>
-                <div className="text-xs text-zinc-500">rating {row.rating} · n={row.sample}</div>
+                <div className="text-xs text-zinc-500">rating {row.rating} · K{row.strengthBucket} · n={row.sample}</div>
               </Card>
             ))}
           </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Layers3 size={18} className="text-emerald-600" />
+                <CardTitle>Rozkład dynamicznych koszyków</CardTitle>
+              </div>
+              <p className="text-sm text-zinc-500">
+                Granice są percentylowe. Remisy pozostają razem, dlatego koszyki nie muszą mieć identycznej liczby drużyn.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {ratings.bucketSummaries.map((summary) => (
+                <div key={summary.bucket} className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${bucketClass(summary.bucket)}`}>
+                      K{summary.bucket}
+                    </span>
+                    <span className="text-2xl font-semibold">{summary.teams}</span>
+                  </div>
+                  <div className="mt-2 text-sm font-medium">{summary.label}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    P{summary.percentileFrom}–{summary.percentileTo}
+                  </div>
+                  <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                    Zakres średniej: {summary.minAverage === null ? "—" : `${formatNumber(summary.minAverage)}–${formatNumber(summary.maxAverage)}`}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
 
           <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>{ratings.statLabel} · {scopeLabels[scope]} · {venueLabels[venue]}</CardTitle>
               <p className="text-sm text-zinc-500">
-                Percentyle są liczone wyłącznie wśród drużyn spełniających minimum próby. Remisy otrzymują ten sam rating i pozycję.
+                Percentyle i koszyki są liczone wyłącznie wśród drużyn spełniających minimum próby. Remisy otrzymują ten sam rating, pozycję i koszyk.
               </p>
             </CardHeader>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] text-sm">
+              <table className="w-full min-w-[1100px] text-sm">
                 <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/70">
                   <tr>
                     <th className="p-3">Pozycja</th>
@@ -233,11 +284,11 @@ export default async function RatingsPage({
                     <th className="p-3">Min–max</th>
                     <th className="p-3">Do ligi</th>
                     <th className="p-3">Rating</th>
-                    <th className="p-3">Koszyk</th>
+                    <th className="p-3">Koszyk 1–4</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {ratings.rows.map((row) => (
+                  {visibleRows.map((row) => (
                     <tr key={row.teamId}>
                       <td className="p-3 text-lg font-semibold">{row.position ?? "—"}</td>
                       <td className="p-3">
@@ -280,12 +331,19 @@ export default async function RatingsPage({
                         )}
                       </td>
                       <td className="p-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${bucketClass(row.bucket)}`}>
-                          {marketRatingBucketLabel(row.bucket)}
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${bucketClass(row.strengthBucket)}`}>
+                          {marketStrengthBucketLabel(row.strengthBucket)}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {!visibleRows.length ? (
+                    <tr>
+                      <td colSpan={9} className="p-10 text-center text-zinc-500">
+                        Brak drużyn w wybranym koszyku lub brak wystarczającej próby.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>

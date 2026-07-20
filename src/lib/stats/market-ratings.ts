@@ -12,6 +12,7 @@ export type RatingScope = TrendScope;
 export type RatingVenue = TrendVenue;
 export type RatingLookback = 5 | 10 | 20 | null;
 export type RatingBucket = "LOW" | "BELOW_AVERAGE" | "ABOVE_AVERAGE" | "HIGH";
+export type StrengthBucket = 1 | 2 | 3 | 4;
 export type RatingQuality = "NO_DATA" | "WEAK" | "MODERATE" | "STRONG";
 
 export type RatingTeam = {
@@ -22,6 +23,16 @@ export type RatingTeam = {
 
 export type RatingMatch = TrendMatch & {
   id: string;
+};
+
+export type StrengthBucketSummary = {
+  bucket: StrengthBucket;
+  label: string;
+  percentileFrom: number;
+  percentileTo: number;
+  teams: number;
+  minAverage: number | null;
+  maxAverage: number | null;
 };
 
 export type MarketRatingRow = {
@@ -40,6 +51,7 @@ export type MarketRatingRow = {
   percentile: number | null;
   rating: number | null;
   bucket: RatingBucket | null;
+  strengthBucket: StrengthBucket | null;
   quality: RatingQuality;
   eligible: boolean;
 };
@@ -55,6 +67,8 @@ export type MarketRatingsResult = {
   teamsTotal: number;
   teamsWithData: number;
   eligibleTeams: number;
+  bucketRule: string;
+  bucketSummaries: StrengthBucketSummary[];
   rows: MarketRatingRow[];
 };
 
@@ -87,11 +101,18 @@ function quality(sample: number): RatingQuality {
   return "STRONG";
 }
 
-function bucket(percentile: number): RatingBucket {
-  if (percentile < 25) return "LOW";
-  if (percentile < 50) return "BELOW_AVERAGE";
-  if (percentile < 75) return "ABOVE_AVERAGE";
-  return "HIGH";
+function strengthBucket(percentile: number): StrengthBucket {
+  if (percentile >= 75) return 1;
+  if (percentile >= 50) return 2;
+  if (percentile >= 25) return 3;
+  return 4;
+}
+
+function bucketFromStrength(value: StrengthBucket): RatingBucket {
+  if (value === 1) return "HIGH";
+  if (value === 2) return "ABOVE_AVERAGE";
+  if (value === 3) return "BELOW_AVERAGE";
+  return "LOW";
 }
 
 function sameNumber(left: number, right: number) {
@@ -121,6 +142,35 @@ function ratingValues(input: {
     venue: input.venue,
     limit: input.lookback,
   }).map((item) => item.value);
+}
+
+function buildBucketSummaries(rows: MarketRatingRow[]): StrengthBucketSummary[] {
+  const definitions: Array<{
+    bucket: StrengthBucket;
+    percentileFrom: number;
+    percentileTo: number;
+  }> = [
+    { bucket: 1, percentileFrom: 75, percentileTo: 100 },
+    { bucket: 2, percentileFrom: 50, percentileTo: 75 },
+    { bucket: 3, percentileFrom: 25, percentileTo: 50 },
+    { bucket: 4, percentileFrom: 0, percentileTo: 25 },
+  ];
+
+  return definitions.map((definition) => {
+    const bucketRows = rows.filter(
+      (row): row is MarketRatingRow & { average: number } =>
+        row.strengthBucket === definition.bucket && row.average !== null,
+    );
+    const averages = bucketRows.map((row) => row.average);
+
+    return {
+      ...definition,
+      label: marketStrengthBucketLabel(definition.bucket),
+      teams: bucketRows.length,
+      minAverage: averages.length ? Math.min(...averages) : null,
+      maxAverage: averages.length ? Math.max(...averages) : null,
+    };
+  });
 }
 
 export function buildMarketRatings(input: {
@@ -208,6 +258,7 @@ export function buildMarketRatings(input: {
   const rows: MarketRatingRow[] = baseRows
     .map((row) => {
       const percentile = percentileByTeam.get(row.teamId) ?? null;
+      const strength = percentile === null ? null : strengthBucket(percentile);
       const delta =
         row.average !== null && leagueAverage !== null
           ? row.average - leagueAverage
@@ -225,7 +276,8 @@ export function buildMarketRatings(input: {
         deltaPercent,
         percentile,
         rating: percentile === null ? null : Math.round(percentile),
-        bucket: percentile === null ? null : bucket(percentile),
+        bucket: strength === null ? null : bucketFromStrength(strength),
+        strengthBucket: strength,
       };
     })
     .sort((left, right) => {
@@ -248,6 +300,8 @@ export function buildMarketRatings(input: {
     teamsTotal: input.teams.length,
     teamsWithData: baseRows.filter((row) => row.sample > 0).length,
     eligibleTeams: eligible.length,
+    bucketRule: marketStrengthBucketRule(),
+    bucketSummaries: buildBucketSummaries(rows),
     rows,
   };
 }
@@ -303,6 +357,18 @@ export function marketRatingBucketLabel(value: RatingBucket | null) {
   if (value === "ABOVE_AVERAGE") return "powyżej średniej";
   if (value === "HIGH") return "wysoki";
   return "brak ratingu";
+}
+
+export function marketStrengthBucketLabel(value: StrengthBucket | null) {
+  if (value === 1) return "Koszyk 1 · najwyższa wartość";
+  if (value === 2) return "Koszyk 2 · powyżej mediany";
+  if (value === 3) return "Koszyk 3 · poniżej mediany";
+  if (value === 4) return "Koszyk 4 · najniższa wartość";
+  return "Brak koszyka";
+}
+
+export function marketStrengthBucketRule() {
+  return "K1: P75–P100, K2: P50–<P75, K3: P25–<P50, K4: P0–<P25. Remisy zachowują ten sam percentyl i koszyk, dlatego liczebność koszyków może być nierówna.";
 }
 
 export function marketRatingQualityLabel(value: RatingQuality) {
