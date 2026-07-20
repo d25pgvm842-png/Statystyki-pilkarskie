@@ -115,6 +115,8 @@ model User {
   analysisNotes MatchAnalysisNote[]
   analysisPicks AnalysisPick[]
   analysisStrategies AnalysisStrategy[]
+  analysisStrategyVersions AnalysisStrategyVersion[]
+  strategyForwardSignals StrategyForwardSignal[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -238,6 +240,7 @@ model Match {
   analysisNotes MatchAnalysisNote[]
   fieldObservations MatchFieldObservation[]
   analysisPicks AnalysisPick[]
+  strategyForwardSignals StrategyForwardSignal[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -421,6 +424,7 @@ model AnalysisPick {
   selectedTeam            Team?              @relation("AnalysisPickTeam", fields: [selectedTeamId], references: [id], onDelete: SetNull)
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
+  strategyForwardSignals  StrategyForwardSignal[]
 
   @@unique([userId, fingerprint])
   @@index([userId, status, createdAt])
@@ -435,6 +439,7 @@ model AnalysisStrategy {
   name                    String
   description             String?
   active                  Boolean  @default(true)
+  status                  String   @default("DRAFT")
   leagueId                String?
   seasonId                String?
   statKey                 String?
@@ -462,6 +467,7 @@ model AnalysisStrategy {
   minBacktestHitRate      Float?
   minimumConfidence       String?
   user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions                AnalysisStrategyVersion[]
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -469,6 +475,92 @@ model AnalysisStrategy {
   @@index([userId, active, updatedAt])
   @@index([leagueId])
   @@index([seasonId])
+}
+
+model AnalysisStrategyVersion {
+  id                       String   @id @default(cuid())
+  strategyId               String
+  userId                   String
+  version                  Int
+  status                   String   @default("FORWARD_TEST")
+  activatedAt              DateTime
+  endedAt                  DateTime?
+  config                   Json
+  historicalSnapshot       Json
+  stakeMode                String   @default("FIXED")
+  fixedStake               Float    @default(1)
+  initialBankroll          Float    @default(1000)
+  bankrollPercent          Float    @default(1)
+  kellyFraction            Float    @default(0.25)
+  maxStakePercent          Float    @default(3)
+  maxMatchExposurePercent  Float    @default(5)
+  maxLeagueExposurePercent Float    @default(15)
+  maxMarketExposurePercent Float    @default(15)
+  maxDailyExposurePercent  Float    @default(20)
+  strategy                 AnalysisStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signals                  StrategyForwardSignal[]
+  createdAt                DateTime @default(now())
+
+  @@unique([strategyId, version])
+  @@index([userId, status, activatedAt])
+  @@index([strategyId, activatedAt])
+}
+
+model StrategyForwardSignal {
+  id                String   @id @default(cuid())
+  strategyVersionId String
+  analysisPickId    String
+  matchId           String
+  userId            String
+  decisionAt        DateTime
+  kickoffAt         DateTime
+  leagueId          String
+  leagueName        String
+  seasonName        String
+  homeTeamName      String
+  awayTeamName      String
+  statKey           String
+  statLabel         String
+  scope             String
+  target            String
+  side              String
+  threshold         Float
+  source            String
+  bookmaker         String?
+  oddsAtSignal      Float?
+  closingOdds       Float?
+  modelProbability  Float?
+  expectedValue     Float?
+  projection        Float?
+  edge              Float?
+  modelVersion      String?
+  bankrollAtSignal           Float
+  fixedBankrollAtSignal      Float
+  percentageBankrollAtSignal Float
+  kellyBankrollAtSignal      Float
+  fixedStake                 Float
+  percentageStake   Float
+  kellyStake        Float?
+  recommendedStake  Float?
+  stakeMode         String
+  exposureStatus    String   @default("OK")
+  result            AnalysisPickResult?
+  actualValue       Float?
+  settledAt         DateTime?
+  strategyVersion   AnalysisStrategyVersion @relation(fields: [strategyVersionId], references: [id], onDelete: Cascade)
+  analysisPick      AnalysisPick @relation(fields: [analysisPickId], references: [id], onDelete: Restrict)
+  match             Match @relation(fields: [matchId], references: [id], onDelete: Restrict)
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([strategyVersionId, analysisPickId])
+  @@index([userId, decisionAt])
+  @@index([strategyVersionId, kickoffAt])
+  @@index([matchId])
+  @@index([leagueId, kickoffAt])
+  @@index([statKey, kickoffAt])
 }
 
 model LoginThrottle {
