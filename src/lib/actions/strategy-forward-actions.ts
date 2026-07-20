@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@/generated/prisma/client";
 import { AuditEntityType } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth";
+import { evaluateAndPersistStrategyHealth } from "@/lib/data/strategy-monitoring";
 import { loadStrategyEntries } from "@/lib/data/strategy-lab";
 import { syncActiveForwardSignals } from "@/lib/data/strategy-forward";
 import { prisma } from "@/lib/db";
@@ -114,6 +115,7 @@ function revalidateStrategyPaths() {
   revalidatePath("/portfolio");
   revalidatePath("/journal");
   revalidatePath("/scanner");
+  revalidatePath("/monitoring");
 }
 
 export async function activateStrategyForwardAction(formData: FormData) {
@@ -435,6 +437,10 @@ export async function syncStrategyForwardSignalsAction(formData: FormData) {
   const user = await requireUser();
   const versionId = text(formData, "versionId");
   const captured = await syncActiveForwardSignals(user.id);
+  await evaluateAndPersistStrategyHealth({
+    userId: user.id,
+    source: "SYNC",
+  });
   revalidateStrategyPaths();
   redirect(`/portfolio${versionId ? `?versionId=${versionId}&` : "?"}synced=${captured}`);
 }

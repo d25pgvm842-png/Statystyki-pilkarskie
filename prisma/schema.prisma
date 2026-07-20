@@ -117,6 +117,7 @@ model User {
   analysisStrategies AnalysisStrategy[]
   analysisStrategyVersions AnalysisStrategyVersion[]
   strategyForwardSignals StrategyForwardSignal[]
+  strategyHealthEvents StrategyHealthEvent[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -500,11 +501,37 @@ model AnalysisStrategyVersion {
   strategy                 AnalysisStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
   user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   signals                  StrategyForwardSignal[]
+  healthStatus             String   @default("INSUFFICIENT_DATA")
+  healthScore              Int?
+  healthReason             String?
+  healthEvaluatedAt        DateTime?
+  minForwardSample         Int      @default(20)
+  maxDrawdownPercent       Float    @default(15)
+  maxLossPercent           Float    @default(10)
+  healthEvents             StrategyHealthEvent[]
   createdAt                DateTime @default(now())
 
   @@unique([strategyId, version])
   @@index([userId, status, activatedAt])
   @@index([strategyId, activatedAt])
+  @@index([userId, healthStatus, healthEvaluatedAt], map: "ASV_user_health_eval_idx")
+}
+
+model StrategyHealthEvent {
+  id                String   @id @default(cuid())
+  strategyVersionId String
+  userId            String
+  status            String
+  score             Int?
+  reason            String?
+  source            String   @default("MANUAL")
+  metrics           Json
+  strategyVersion   AnalysisStrategyVersion @relation(fields: [strategyVersionId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+
+  @@index([strategyVersionId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model StrategyForwardSignal {
