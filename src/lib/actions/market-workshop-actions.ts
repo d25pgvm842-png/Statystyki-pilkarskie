@@ -13,6 +13,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { loadMarketWorkshop } from "@/lib/data/market-workshop";
 import { prisma } from "@/lib/db";
+import { captureForwardSignalsForPick } from "@/lib/data/strategy-forward";
 import { buildAnalysisPickFingerprint } from "@/lib/stats/analysis-journal";
 import {
   isHalfLine,
@@ -191,9 +192,11 @@ export async function saveMarketWorkshopPickAction(formData: FormData) {
         },
       },
     });
+    await captureForwardSignalsForPick(tx, { pickId: item.id, userId: user.id });
   });
 
   revalidatePath("/analysis");
   revalidatePath("/journal");
+  revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "workshopSaved"));
 }

@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Trophy,
   Users,
+  WalletCards,
 } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth-actions";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -33,6 +34,7 @@ const links = [
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
   { href: "/scanner", label: "Skaner", icon: Search },
   { href: "/strategies", label: "Strategie", icon: ListChecks },
+  { href: "/portfolio", label: "Portfel", icon: WalletCards },
   { href: "/journal", label: "Dziennik", icon: BookOpen },
   { href: "/teams", label: "Drużyny", icon: Users },
   { href: "/referees", label: "Sędziowie", icon: Scale },

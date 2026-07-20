@@ -14,6 +14,10 @@ import {
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
+  captureForwardSignalsForPick,
+  syncForwardSignalsForPick,
+} from "@/lib/data/strategy-forward";
+import {
   buildAnalysisPickFingerprint,
   settleTotalSelection,
 } from "@/lib/stats/analysis-journal";
@@ -200,10 +204,12 @@ export async function addAnalysisPickAction(formData: FormData) {
         },
       },
     });
+    await captureForwardSignalsForPick(tx, { pickId: item.id, userId: user.id });
   });
 
   revalidatePath("/journal");
   revalidatePath("/scanner");
+  revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "saved"));
 }
 
@@ -278,10 +284,12 @@ export async function updateAnalysisPickAction(formData: FormData) {
           changes: { create: changes },
         },
       });
+      await syncForwardSignalsForPick(tx, { pickId: id, userId: user.id });
     });
   }
 
   revalidatePath("/journal");
+  revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "updated"));
 }
 
@@ -320,9 +328,11 @@ export async function settleAnalysisPickManuallyAction(formData: FormData) {
         changes: { create: changes },
       },
     });
+    await syncForwardSignalsForPick(tx, { pickId: id, userId: user.id });
   });
 
   revalidatePath("/journal");
+  revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "settled", "1"));
 }
 
@@ -409,10 +419,12 @@ export async function settleFinishedAnalysisPicksAction(formData: FormData) {
             },
           },
         });
+        await syncForwardSignalsForPick(tx, { pickId: row.item.id, userId: user.id });
       }
     });
   }
 
   revalidatePath("/journal");
+  revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "settled", String(ready.length)));
 }

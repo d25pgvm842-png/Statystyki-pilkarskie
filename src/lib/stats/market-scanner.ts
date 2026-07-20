@@ -155,8 +155,10 @@ export function scannerEvidenceStatus(input: {
   if (
     input.sideSignals >= 20
     && input.edgeSignals >= 8
-    && (input.sideHitRate ?? 0) >= 55
-    && (input.edgeHitRate ?? 0) >= 55
+    && input.sideHitRate !== null
+    && input.edgeHitRate !== null
+    && input.sideHitRate >= 55
+    && input.edgeHitRate >= 55
   ) {
     return "SUPPORTED";
   }
@@ -164,8 +166,10 @@ export function scannerEvidenceStatus(input: {
   if (
     input.sideSignals >= 10
     && input.edgeSignals >= 5
-    && (input.sideHitRate ?? 0) >= 50
-    && (input.edgeHitRate ?? 0) >= 50
+    && input.sideHitRate !== null
+    && input.edgeHitRate !== null
+    && input.sideHitRate >= 50
+    && input.edgeHitRate >= 50
   ) {
     return "WATCH";
   }
@@ -280,11 +284,15 @@ export function scanUpcomingMarket(input: {
     const edge = Math.abs(projection.projectedTotal - input.threshold);
     const sideHistory = sideBreakdown(calibration, side);
     const edgeHistory = edgeBreakdown(calibration, edge);
+    const sideSignals = sideHistory ? sideHistory.signals : 0;
+    const sideHitRate = sideHistory ? sideHistory.hitRate : null;
+    const edgeSignals = edgeHistory ? edgeHistory.signals : 0;
+    const edgeHitRate = edgeHistory ? edgeHistory.hitRate : null;
     const evidenceStatus = scannerEvidenceStatus({
-      sideSignals: sideHistory?.signals ?? 0,
-      sideHitRate: sideHistory?.hitRate ?? null,
-      edgeSignals: edgeHistory?.signals ?? 0,
-      edgeHitRate: edgeHistory?.hitRate ?? null,
+      sideSignals,
+      sideHitRate,
+      edgeSignals,
+      edgeHitRate,
     });
 
     candidates.push({
@@ -309,10 +317,10 @@ export function scanUpcomingMarket(input: {
       awayAgainst: projection.awayAgainst,
       awayFor: projection.awayFor,
       homeAgainst: projection.homeAgainst,
-      sideBacktestSignals: sideHistory?.signals ?? 0,
-      sideBacktestHitRate: sideHistory?.hitRate ?? null,
-      edgeBacktestSignals: edgeHistory?.signals ?? 0,
-      edgeBacktestHitRate: edgeHistory?.hitRate ?? null,
+      sideBacktestSignals: sideSignals,
+      sideBacktestHitRate: sideHitRate,
+      edgeBacktestSignals: edgeSignals,
+      edgeBacktestHitRate: edgeHitRate,
       evidenceStatus,
     });
   }

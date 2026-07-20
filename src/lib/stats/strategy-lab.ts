@@ -137,6 +137,33 @@ export type StrategyEvaluation = {
   byModelVersion: StrategySegmentRow[];
 };
 
+export type StrategyHistoricalSnapshot = {
+  capturedAt: string;
+  matchedEntries: number;
+  trainingEntries: number;
+  validationEntries: number;
+  stability: StrategyStability;
+  metrics: StrategyMetrics;
+  training: StrategyMetrics;
+  validation: StrategyMetrics;
+};
+
+export function snapshotStrategyEvaluation(
+  evaluation: StrategyEvaluation,
+  capturedAt: Date,
+): StrategyHistoricalSnapshot {
+  return {
+    capturedAt: capturedAt.toISOString(),
+    matchedEntries: evaluation.matchedEntries.length,
+    trainingEntries: evaluation.trainingEntries,
+    validationEntries: evaluation.validationEntries,
+    stability: evaluation.stability,
+    metrics: evaluation.metrics,
+    training: evaluation.training,
+    validation: evaluation.validation,
+  };
+}
+
 const confidenceOrder: StrategyConfidence[] = [
   "NO_DATA",
   "WEAK",

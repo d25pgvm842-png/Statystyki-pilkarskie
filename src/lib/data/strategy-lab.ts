@@ -13,11 +13,16 @@ export type StrategyRecord = Awaited<ReturnType<typeof loadStrategyRecords>>[num
 function loadStrategyRecords(userId: string) {
   return prisma.analysisStrategy.findMany({
     where: { userId },
+    include: {
+      versions: { orderBy: { version: "desc" }, take: 1 },
+    },
     orderBy: [{ active: "desc" }, { updatedAt: "desc" }, { name: "asc" }],
   });
 }
 
-export function strategyConfigFromRecord(strategy: StrategyRecord): StrategyConfig {
+export function strategyConfigFromRecord(
+  strategy: Omit<StrategyRecord, "versions">,
+): StrategyConfig {
   return {
     id: strategy.id,
     name: strategy.name,

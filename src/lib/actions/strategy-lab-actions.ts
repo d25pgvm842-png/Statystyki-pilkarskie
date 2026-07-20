@@ -247,7 +247,7 @@ export async function createAnalysisStrategyAction(formData: FormData) {
   try {
     const created = await prisma.$transaction(async (tx) => {
       const strategy = await tx.analysisStrategy.create({
-        data: { userId: user.id, active: true, ...data },
+        data: { userId: user.id, active: false, status: "DRAFT", ...data },
       });
       await tx.auditLog.create({
         data: {
@@ -267,6 +267,7 @@ export async function createAnalysisStrategyAction(formData: FormData) {
       return strategy;
     });
     revalidatePath("/strategies");
+    revalidatePath("/portfolio");
     redirect(`/strategies?strategyId=${created.id}&created=1`);
   } catch (error) {
     if (databaseErrorCode(error) === "P2002") {
@@ -286,6 +287,9 @@ export async function updateAnalysisStrategyAction(formData: FormData) {
 
   const current = await prisma.analysisStrategy.findFirst({ where: { id, userId: user.id } });
   if (!current) redirect(appendResult(returnTo, "error", "missing"));
+  if (current.status === "FORWARD_TEST" || current.status === "APPROVED") {
+    redirect(appendResult(returnTo, "error", "locked"));
+  }
 
   const changed = Object.entries(data).filter(
     ([fieldName, newValue]) =>
@@ -294,7 +298,10 @@ export async function updateAnalysisStrategyAction(formData: FormData) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.analysisStrategy.update({ where: { id }, data });
+      await tx.analysisStrategy.update({
+        where: { id },
+        data: changed.length ? { ...data, active: false, status: "DRAFT" } : data,
+      });
       if (changed.length) {
         await tx.auditLog.create({
           data: {
@@ -303,17 +310,26 @@ export async function updateAnalysisStrategyAction(formData: FormData) {
             action: "UPDATE_ANALYSIS_STRATEGY",
             userId: user.id,
             changes: {
-              create: changed.map(([fieldName, newValue]) => ({
-                fieldName,
-                oldValue: valueToString(current[fieldName as keyof typeof current]),
-                newValue: valueToString(newValue),
-              })),
+              create: [
+                ...changed.map(([fieldName, newValue]) => ({
+                  fieldName,
+                  oldValue: valueToString(current[fieldName as keyof typeof current]),
+                  newValue: valueToString(newValue),
+                })),
+                ...(current.active
+                  ? [{ fieldName: "active", oldValue: "true", newValue: "false" }]
+                  : []),
+                ...(current.status !== "DRAFT"
+                  ? [{ fieldName: "status", oldValue: current.status, newValue: "DRAFT" }]
+                  : []),
+              ],
             },
           },
         });
       }
     });
     revalidatePath("/strategies");
+    revalidatePath("/portfolio");
     redirect(`/strategies?strategyId=${id}&updated=1`);
   } catch (error) {
     if (databaseErrorCode(error) === "P2002") {
@@ -329,6 +345,9 @@ export async function toggleAnalysisStrategyAction(formData: FormData) {
   if (!id) redirect("/strategies?error=missing");
   const current = await prisma.analysisStrategy.findFirst({ where: { id, userId: user.id } });
   if (!current) redirect("/strategies?error=missing");
+  if (current.status === "FORWARD_TEST" || current.status === "APPROVED") {
+    redirect(`/strategies?strategyId=${id}&error=locked`);
+  }
   const active = !current.active;
 
   await prisma.$transaction(async (tx) => {
@@ -350,6 +369,7 @@ export async function toggleAnalysisStrategyAction(formData: FormData) {
     });
   });
   revalidatePath("/strategies");
+  revalidatePath("/portfolio");
   redirect(`/strategies?strategyId=${id}&toggled=1`);
 }
 
@@ -377,6 +397,7 @@ export async function duplicateAnalysisStrategyAction(formData: FormData) {
         userId: user.id,
         name,
         active: false,
+        status: "DRAFT",
         ...copyData(current),
       },
     });
@@ -397,5 +418,6 @@ export async function duplicateAnalysisStrategyAction(formData: FormData) {
     return strategy;
   });
   revalidatePath("/strategies");
+  revalidatePath("/portfolio");
   redirect(`/strategies?strategyId=${created.id}&duplicated=1`);
 }

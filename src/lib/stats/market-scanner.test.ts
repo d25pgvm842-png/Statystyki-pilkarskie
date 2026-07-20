@@ -212,3 +212,12 @@ test("kandydaci są sortowani według statusu, przewagi i terminu", () => {
   assert.equal(result.candidates.length, 2);
   assert.equal(result.candidates[0]?.matchId, "target-2");
 });
+
+test("brak trafności nie jest traktowany jako zero", () => {
+  assert.equal(scannerEvidenceStatus({
+    sideSignals: 30,
+    sideHitRate: null,
+    edgeSignals: 20,
+    edgeHitRate: 70,
+  }), "UNVERIFIED");
+});

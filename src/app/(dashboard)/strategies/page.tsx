@@ -17,6 +17,7 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  WalletCards,
 } from "lucide-react";
 import {
   createAnalysisStrategyAction,
@@ -24,6 +25,13 @@ import {
   toggleAnalysisStrategyAction,
   updateAnalysisStrategyAction,
 } from "@/lib/actions/strategy-lab-actions";
+import {
+  activateStrategyForwardAction,
+  approveStrategyForwardAction,
+  markStrategyHistoricallyValidatedAction,
+  pauseStrategyForwardAction,
+  prepareNewStrategyVersionAction,
+} from "@/lib/actions/strategy-forward-actions";
 import { requireUser } from "@/lib/auth";
 import {
   loadStrategyLab,
@@ -155,6 +163,24 @@ function stabilityClass(value: StrategyStability) {
   if (value === "WATCH") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
   if (value === "UNSTABLE") return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
   return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+}
+
+
+function strategyStatusLabel(value: string) {
+  if (value === "HISTORICAL_VALIDATED") return "zwalidowana historycznie";
+  if (value === "FORWARD_TEST") return "test forward";
+  if (value === "APPROVED") return "zaakceptowana";
+  if (value === "PAUSED") return "wstrzymana";
+  if (value === "ARCHIVED") return "archiwalna";
+  return "projekt";
+}
+
+function strategyStatusClass(value: string) {
+  if (value === "APPROVED") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
+  if (value === "FORWARD_TEST") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  if (value === "HISTORICAL_VALIDATED") return "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300";
+  if (value === "PAUSED") return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+  return "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
 }
 
 function MetricCard({
@@ -478,8 +504,8 @@ function StrategyComparison({ strategies, selectedId }: { strategies: LoadedStra
                     <td className="p-3">
                       <div className="font-medium">{strategy.name}</div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
-                        <span className={`rounded-full px-2 py-0.5 ${strategy.active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}>
-                          {strategy.active ? "aktywna" : "wstrzymana"}
+                        <span className={`rounded-full px-2 py-0.5 ${strategyStatusClass(strategy.status)}`}>
+                          {strategyStatusLabel(strategy.status)}
                         </span>
                       </div>
                     </td>
@@ -513,7 +539,10 @@ export default async function StrategiesPage({
   const selectedId = stringParam(params.strategyId) || null;
   const lab = await loadStrategyLab({ userId: user.id, selectedId });
   const selected = lab.selected;
-  const editRequested = stringParam(params.edit) === "1" && selected !== null;
+  const locked = selected !== null
+    && (selected.strategy.status === "FORWARD_TEST" || selected.strategy.status === "APPROVED");
+  const latestVersion = selected?.strategy.versions[0] ?? null;
+  const editRequested = stringParam(params.edit) === "1" && selected !== null && !locked;
   const template = templates[stringParam(params.template)] ?? null;
   const defaults: StrategyConfig = editRequested && selected
     ? selected.config
@@ -535,6 +564,7 @@ export default async function StrategiesPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/strategies#editor" className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"><PlusCircle size={16} className="mr-2" />Nowa strategia</Link>
+          <Link href="/portfolio" className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"><WalletCards size={16} className="mr-2" />Portfel</Link>
           {selected ? (
             <Link href={`/strategies/export?strategyId=${selected.strategy.id}`} className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"><Download size={16} className="mr-2" />Eksport CSV</Link>
           ) : null}
@@ -552,7 +582,11 @@ export default async function StrategiesPage({
       {stringParam(params.created) ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Strategia została utworzona.</div> : null}
       {stringParam(params.updated) ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Strategia została zaktualizowana.</div> : null}
       {stringParam(params.duplicated) ? <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">Utworzono wstrzymaną kopię strategii.</div> : null}
-      {stringParam(params.error) ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">Nie udało się zapisać strategii. Sprawdź wartości i unikalność nazwy.</div> : null}
+      {stringParam(params.validated) ? <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200">Strategia została oznaczona jako zwalidowana historycznie.</div> : null}
+      {stringParam(params.newVersion) ? <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">Poprzednia wersja została zamknięta. Edytujesz projekt następnej wersji.</div> : null}
+      {stringParam(params.error) === "locked" ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Aktywnej wersji nie można edytować. Najpierw utwórz nową wersję.</div> : null}
+      {stringParam(params.error) === "notValidated" ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Najpierw oznacz bieżącą regułę jako zwalidowaną historycznie.</div> : null}
+      {stringParam(params.error) && !["locked", "notValidated"].includes(stringParam(params.error)) ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">Nie udało się zapisać strategii. Sprawdź wartości i unikalność nazwy.</div> : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <Link href="/strategies?template=conservative#editor" className="rounded-lg border border-zinc-200 bg-white p-4 hover:border-emerald-400 dark:border-zinc-800 dark:bg-zinc-900">
@@ -586,16 +620,28 @@ export default async function StrategiesPage({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle>{selected.strategy.name}</CardTitle>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${selected.strategy.active ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}>{selected.strategy.active ? "aktywna" : "wstrzymana"}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${strategyStatusClass(selected.strategy.status)}`}>{strategyStatusLabel(selected.strategy.status)}</span>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${stabilityClass(selected.evaluation.stability)}`}>{strategyStabilityLabel(selected.evaluation.stability)}</span>
                   </div>
                   {selected.strategy.description ? <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{selected.strategy.description}</p> : null}
                   <p className="mt-2 text-xs text-zinc-500">{strategyRuleSummary(selected.config)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Link href={`/strategies?strategyId=${selected.strategy.id}&edit=1#editor`} className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><Edit3 size={16} className="mr-2" />Edytuj</Link>
-                  <form action={duplicateAnalysisStrategyAction}><input type="hidden" name="id" value={selected.strategy.id} /><Button type="submit" variant="secondary"><Copy size={16} className="mr-2" />Duplikuj</Button></form>
-                  <form action={toggleAnalysisStrategyAction}><input type="hidden" name="id" value={selected.strategy.id} /><Button type="submit" variant="secondary">{selected.strategy.active ? <PauseCircle size={16} className="mr-2" /> : <PlayCircle size={16} className="mr-2" />}{selected.strategy.active ? "Wstrzymaj" : "Aktywuj"}</Button></form>
+                  {locked && latestVersion ? (
+                    <>
+                      <Link href={`/portfolio?versionId=${latestVersion.id}`} className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><WalletCards size={16} className="mr-2" />Otwórz portfel</Link>
+                      {latestVersion.status === "FORWARD_TEST" ? <form action={approveStrategyForwardAction}><input type="hidden" name="versionId" value={latestVersion.id} /><Button type="submit"><CheckCircle2 size={16} className="mr-2" />Akceptuj</Button></form> : null}
+                      <form action={pauseStrategyForwardAction}><input type="hidden" name="versionId" value={latestVersion.id} /><Button type="submit" variant="secondary"><PauseCircle size={16} className="mr-2" />Wstrzymaj</Button></form>
+                      <form action={prepareNewStrategyVersionAction}><input type="hidden" name="strategyId" value={selected.strategy.id} /><Button type="submit" variant="secondary"><Edit3 size={16} className="mr-2" />Nowa wersja</Button></form>
+                    </>
+                  ) : (
+                    <>
+                      <Link href={`/strategies?strategyId=${selected.strategy.id}&edit=1#editor`} className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><Edit3 size={16} className="mr-2" />Edytuj</Link>
+                      <form action={duplicateAnalysisStrategyAction}><input type="hidden" name="id" value={selected.strategy.id} /><Button type="submit" variant="secondary"><Copy size={16} className="mr-2" />Duplikuj</Button></form>
+                      <form action={markStrategyHistoricallyValidatedAction}><input type="hidden" name="strategyId" value={selected.strategy.id} /><Button type="submit" variant="secondary"><ShieldCheck size={16} className="mr-2" />Zwalidowana</Button></form>
+                      <form action={toggleAnalysisStrategyAction}><input type="hidden" name="id" value={selected.strategy.id} /><Button type="submit" variant="secondary">{selected.strategy.active ? <PauseCircle size={16} className="mr-2" /> : <PlayCircle size={16} className="mr-2" />}{selected.strategy.active ? "Wstrzymaj" : "Aktywuj roboczo"}</Button></form>
+                    </>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -611,6 +657,44 @@ export default async function StrategiesPage({
           </div>
 
           <ValidationTable training={selected.evaluation.training} validation={selected.evaluation.validation} />
+
+          {!locked && selected.strategy.status === "HISTORICAL_VALIDATED" ? (
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><WalletCards size={18} />Uruchom test forward</CardTitle></CardHeader>
+              <CardContent>
+                <div className="mb-4 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+                  <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+                  <div>Aktywacja zamrozi obecną regułę jako kolejną wersję. Do testu trafią wyłącznie decyzje utworzone później i przed rozpoczęciem meczu.</div>
+                </div>
+                <form action={activateStrategyForwardAction} className="grid gap-4">
+                  <input type="hidden" name="strategyId" value={selected.strategy.id} />
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Sposób stawki</span><Select name="stakeMode" defaultValue="FIXED"><option value="FIXED">Stała stawka</option><option value="BANKROLL_PERCENT">Procent kapitału</option><option value="KELLY">Częściowy Kelly</option></Select></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Kapitał początkowy</span><Input name="initialBankroll" type="number" min="1" step="0.01" defaultValue="1000" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Stała stawka</span><Input name="fixedStake" type="number" min="0.01" step="0.01" defaultValue="10" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Procent kapitału</span><Input name="bankrollPercent" type="number" min="0.01" max="100" step="0.01" defaultValue="1" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Część Kelly</span><Input name="kellyFraction" type="number" min="0.01" max="1" step="0.01" defaultValue="0.25" /></label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Maks. stawka %</span><Input name="maxStakePercent" type="number" min="0.01" max="100" step="0.01" defaultValue="3" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Limit meczu %</span><Input name="maxMatchExposurePercent" type="number" min="0.01" max="100" step="0.01" defaultValue="5" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Limit ligi/dzień %</span><Input name="maxLeagueExposurePercent" type="number" min="0.01" max="100" step="0.01" defaultValue="15" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Limit rynku/dzień %</span><Input name="maxMarketExposurePercent" type="number" min="0.01" max="100" step="0.01" defaultValue="15" /></label>
+                    <label className="grid gap-1 text-sm"><span className="text-xs text-zinc-500">Limit dnia %</span><Input name="maxDailyExposurePercent" type="number" min="0.01" max="100" step="0.01" defaultValue="20" /></label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-xs text-zinc-500">Walidacja: {strategyStabilityLabel(selected.evaluation.stability)} · część 30%: n={selected.evaluation.validation.resolvedEntries}</div>
+                    <Button type="submit"><PlayCircle size={16} className="mr-2" />Aktywuj wersję forward</Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          ) : !locked ? (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+              <div>Przed aktywacją sprawdź walidację 70/30 i oznacz regułę przyciskiem „Zwalidowana”. Każda późniejsza edycja cofnie status do projektu.</div>
+            </div>
+          ) : null}
 
           {selected.evaluation.currentEntries.length ? (
             <Card>
