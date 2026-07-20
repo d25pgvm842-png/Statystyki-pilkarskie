@@ -7,10 +7,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; retry?: string }>;
+}) {
   const user = await getCurrentUser();
   if (user) redirect("/");
-  const { error } = await searchParams;
+  const { error, retry } = await searchParams;
+  const retrySeconds = Number(retry);
+  const retryMinutes = Number.isFinite(retrySeconds)
+    ? Math.max(1, Math.min(60, Math.ceil(retrySeconds / 60)))
+    : 15;
 
   return (
     <main className="grid min-h-screen place-items-center bg-zinc-100 p-4 dark:bg-zinc-950">
@@ -23,7 +31,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <form action={loginAction} className="grid gap-4">
             <Field label="E-mail"><Input name="email" type="email" autoComplete="email" required /></Field>
             <Field label="Hasło"><Input name="password" type="password" autoComplete="current-password" required /></Field>
-            {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">Nieprawidłowy e-mail lub hasło.</p> : null}
+            {error === "invalid" ? (
+              <p aria-live="polite" className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                Nieprawidłowy e-mail lub hasło.
+              </p>
+            ) : null}
+            {error === "locked" ? (
+              <p aria-live="polite" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                Zbyt wiele nieudanych prób. Logowanie jest czasowo zablokowane. Spróbuj ponownie za około {retryMinutes} min.
+              </p>
+            ) : null}
             <Button type="submit" className="w-full">Zaloguj</Button>
           </form>
         </CardContent>

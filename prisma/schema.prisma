@@ -409,6 +409,36 @@ model AnalysisPick {
   @@index([status, matchId])
 }
 
+model LoginThrottle {
+  key             String    @id
+  scope           String
+  failedAttempts  Int       @default(0)
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  lastAttemptAt   DateTime
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([scope, blockedUntil])
+  @@index([lastAttemptAt])
+}
+
+model LoginSecurityEvent {
+  id           String    @id @default(cuid())
+  emailHash    String?
+  ipHash       String
+  userId       String?
+  outcome      String
+  reason       String?
+  blockedUntil DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([outcome, createdAt])
+  @@index([emailHash, createdAt])
+  @@index([ipHash, createdAt])
+}
+
 model CurrentDataSyncRun {
   id             String                   @id @default(cuid())
   seasonId       String
