@@ -74,6 +74,19 @@ export async function GET(request: Request) {
     }
   }
 
+  for (const market of analysis.opponentStrength) {
+    rows.push([
+      "siła_rywali",
+      market.label,
+      "surowa_skorygowana",
+      number(market.home.rawAverage),
+      number(market.away.rawAverage),
+      `${number(market.home.adjustedAverage)}/${number(market.away.adjustedAverage)}`,
+      `${market.home.comparableSample}/${market.away.comparableSample}`,
+      `korekta gospodarz ${number(market.home.adjustment)}; korekta gość ${number(market.away.adjustment)}; koszyk obronny gościa K${market.home.currentOpponent?.bucket ?? ""}; koszyk obronny gospodarza K${market.away.currentOpponent?.bucket ?? ""}`,
+    ]);
+  }
+
   for (const item of analysis.h2h) {
     rows.push([
       "h2h",

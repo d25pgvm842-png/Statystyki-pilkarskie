@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Download,
+  Layers3,
   Save,
   Scale,
   Target,
@@ -16,6 +17,8 @@ import { saveMatchAnalysisNoteAction } from "@/lib/actions/match-analysis-action
 import { requireUser } from "@/lib/auth";
 import { loadMatchAnalysis, type AnalysisLookback } from "@/lib/data/match-analysis";
 import { prisma } from "@/lib/db";
+import { marketStrengthBucketLabel } from "@/lib/stats/market-ratings";
+import { opponentStrengthQualityLabel } from "@/lib/stats/opponent-strength";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
 import { formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -218,6 +221,59 @@ export default async function MatchAnalysisPage({
               </div>
             </div>
           ) : null}
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Layers3 size={18} />Korekta siłą wcześniejszych rywali</CardTitle>
+              <p className="text-sm text-zinc-500">
+                Surowa średnia pozostaje bez zmian. Wartość skorygowana dodaje do średniej ligi różnicę drużyny względem oczekiwań przeciw koszykom wcześniejszych rywali.
+              </p>
+            </CardHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1280px] text-sm">
+                <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-950/70">
+                  <tr>
+                    <th className="p-3">Rynek</th>
+                    <th className="p-3">Gospodarz surowa</th>
+                    <th className="p-3">Korekta</th>
+                    <th className="p-3">Gospodarz skorygowana</th>
+                    <th className="p-3">Koszyk obronny gościa</th>
+                    <th className="p-3">Gość surowa</th>
+                    <th className="p-3">Korekta</th>
+                    <th className="p-3">Gość skorygowana</th>
+                    <th className="p-3">Koszyk obronny gospodarza</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {analysis.opponentStrength.map((row) => (
+                    <tr key={row.key}>
+                      <td className="p-3 font-medium">{row.label}</td>
+                      <td className="p-3">{formatNumber(row.home.rawAverage)}<div className="text-xs text-zinc-500">n={row.home.sample}</div></td>
+                      <td className={`p-3 font-medium ${row.home.adjustment === null ? "text-zinc-500" : row.home.adjustment >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {row.home.adjustment === null ? "—" : `${row.home.adjustment >= 0 ? "+" : ""}${formatNumber(row.home.adjustment)}`}
+                        <div className="text-xs font-normal text-zinc-500">{opponentStrengthQualityLabel(row.home.quality)} · n={row.home.comparableSample}</div>
+                      </td>
+                      <td className="p-3 text-lg font-semibold">{formatNumber(row.home.adjustedAverage)}</td>
+                      <td className="p-3">
+                        {row.home.currentOpponent?.bucket ? `K${row.home.currentOpponent.bucket}` : "—"}
+                        <div className="text-xs text-zinc-500">{marketStrengthBucketLabel(row.home.currentOpponent?.bucket ?? null)} · n={row.home.currentOpponent?.sample ?? 0}</div>
+                      </td>
+                      <td className="p-3">{formatNumber(row.away.rawAverage)}<div className="text-xs text-zinc-500">n={row.away.sample}</div></td>
+                      <td className={`p-3 font-medium ${row.away.adjustment === null ? "text-zinc-500" : row.away.adjustment >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {row.away.adjustment === null ? "—" : `${row.away.adjustment >= 0 ? "+" : ""}${formatNumber(row.away.adjustment)}`}
+                        <div className="text-xs font-normal text-zinc-500">{opponentStrengthQualityLabel(row.away.quality)} · n={row.away.comparableSample}</div>
+                      </td>
+                      <td className="p-3 text-lg font-semibold">{formatNumber(row.away.adjustedAverage)}</td>
+                      <td className="p-3">
+                        {row.away.currentOpponent?.bucket ? `K${row.away.currentOpponent.bucket}` : "—"}
+                        <div className="text-xs text-zinc-500">{marketStrengthBucketLabel(row.away.currentOpponent?.bucket ?? null)} · n={row.away.currentOpponent?.sample ?? 0}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
 
           <Card className="overflow-hidden">
             <CardHeader><CardTitle>Projekcja statystyk dom/wyjazd</CardTitle></CardHeader>

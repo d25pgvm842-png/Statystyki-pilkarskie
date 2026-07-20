@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { loadMatchOpponentStrength } from "@/lib/data/opponent-strength";
 import {
   analyzeCustomLineForMatch,
   buildMarketProjections,
@@ -155,6 +156,15 @@ export async function loadMatchAnalysis(input: {
       }),
     ]);
 
+  const opponentStrength = await loadMatchOpponentStrength({
+    seasonId: match.seasonId,
+    homeTeamId: match.homeTeamId,
+    awayTeamId: match.awayTeamId,
+    before: match.kickoffAt,
+    lookback: input.lookback,
+    minSample: 3,
+  });
+
   const projections = buildMarketProjections({
     homeMatches: homeVenue,
     awayMatches: awayVenue,
@@ -202,6 +212,7 @@ export async function loadMatchAnalysis(input: {
     homeForm,
     awayForm,
     projections,
+    opponentStrength,
     refereeSummary,
     customLineRows,
     weakMarkets,
