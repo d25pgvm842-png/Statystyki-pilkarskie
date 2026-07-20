@@ -52,6 +52,7 @@ enum AuditEntityType {
   SEASON
   LEAGUE
   ANALYSIS_PICK
+  ANALYSIS_STRATEGY
 }
 
 enum LineScope {
@@ -113,6 +114,7 @@ model User {
   overrides    DataOverride[]
   analysisNotes MatchAnalysisNote[]
   analysisPicks AnalysisPick[]
+  analysisStrategies AnalysisStrategy[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -425,6 +427,48 @@ model AnalysisPick {
   @@index([matchId])
   @@index([status, matchId])
   @@index([selectedTeamId])
+}
+
+model AnalysisStrategy {
+  id                      String   @id @default(cuid())
+  userId                  String
+  name                    String
+  description             String?
+  active                  Boolean  @default(true)
+  leagueId                String?
+  seasonId                String?
+  statKey                 String?
+  scope                   String?
+  target                  String?
+  side                    String?
+  source                  String?
+  modelVersion            String?
+  marketStatus            String?
+  evidenceStatus          String?
+  bookmaker               String?
+  decisionMode            String   @default("ALL")
+  minModelProbability     Float?
+  maxModelProbability     Float?
+  minExpectedValue        Float?
+  maxExpectedValue        Float?
+  minOdds                 Float?
+  maxOdds                 Float?
+  minThreshold            Float?
+  maxThreshold            Float?
+  minEdge                 Float?
+  minModelSample          Int?
+  minCoverage             Float?
+  minBacktestSignals      Int?
+  minBacktestHitRate      Float?
+  minimumConfidence       String?
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, active, updatedAt])
+  @@index([leagueId])
+  @@index([seasonId])
 }
 
 model LoginThrottle {
