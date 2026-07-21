@@ -6,6 +6,7 @@ import {
   BookOpen,
   CalendarClock,
   CheckCircle2,
+  ClipboardPlus,
   Download,
   ExternalLink,
   RefreshCw,
@@ -14,11 +15,13 @@ import {
   Target,
 } from "lucide-react";
 import { refreshDailyRecommendationsAction } from "@/lib/actions/daily-recommendation-actions";
+import { addRecommendationToPlayPlanAction } from "@/lib/actions/play-plan-actions";
 import { requireUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { loadDailyRecommendations } from "@/lib/data/daily-recommendations";
+import { warsawDateKey } from "@/lib/data/play-plan";
 import {
   dailyRecommendationPriorityClass,
   dailyRecommendationPriorityLabel,
@@ -156,6 +159,13 @@ export default async function RecommendationsPage({
           Odświeżono centrum. Nowe sygnały forward: {stringParam(params.captured) || "0"}. Ocenione strategie: {stringParam(params.evaluated) || "0"}. Zmienione oceny: {stringParam(params.changed) || "0"}.
         </div>
       ) : null}
+      {stringParam(params.error) ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+          {stringParam(params.error) === "blocked" ? "Odrzuconej rekomendacji nie można dodać do planu."
+            : stringParam(params.error) === "alreadyPlayed" ? "Pozycja jest już oznaczona jako zagrana."
+              : "Nie udało się dodać rekomendacji do planu."}
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
         Centrum porządkuje zapisane sygnały. Nie obstawia automatycznie. Priorytet A wymaga dodatniego EV, kompletu kursu i modelu oraz bezpiecznego wsparcia aktywnej strategii.
@@ -289,6 +299,16 @@ export default async function RecommendationsPage({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  {loaded.plannedPickIds.has(item.id) ? (
+                    <Link href={`/play-plan?date=${warsawDateKey(item.match.kickoffAt)}`} className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                      <ClipboardPlus size={15} className="mr-2" />W planie
+                    </Link>
+                  ) : item.status === "WATCHING" && evaluation.priority !== "BLOCKED" ? (
+                    <form action={addRecommendationToPlayPlanAction}>
+                      <input type="hidden" name="pickId" value={item.id} />
+                      <Button type="submit" size="sm"><ClipboardPlus size={15} className="mr-2" />Dodaj do planu</Button>
+                    </form>
+                  ) : null}
                   <Link href={`/analysis?matchId=${item.matchId}`} className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700">
                     <BarChart3 size={15} className="mr-2" />Analiza meczu
                   </Link>

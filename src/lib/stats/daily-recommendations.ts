@@ -8,6 +8,8 @@ export type DailyStrategySupport = {
   healthStatus: string;
   healthScore: number | null;
   exposureStatus: string;
+  recommendedStake: number | null;
+  stakeMode: string;
 };
 
 export type DailyRecommendationInput = {

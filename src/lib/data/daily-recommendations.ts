@@ -38,6 +38,8 @@ type DailyPickRecord = {
   };
   strategyForwardSignals: Array<{
     exposureStatus: string;
+    recommendedStake: number | null;
+    stakeMode: string;
     strategyVersion: {
       id: string;
       version: number;
@@ -74,6 +76,8 @@ function conflictKey(item: {
 
 function strategySupport(signal: {
   exposureStatus: string;
+  recommendedStake: number | null;
+  stakeMode: string;
   strategyVersion: {
     id: string;
     version: number;
@@ -91,6 +95,8 @@ function strategySupport(signal: {
     healthStatus: signal.strategyVersion.healthStatus,
     healthScore: signal.strategyVersion.healthScore,
     exposureStatus: signal.exposureStatus,
+    recommendedStake: signal.recommendedStake,
+    stakeMode: signal.stakeMode,
   };
 }
 
@@ -112,9 +118,10 @@ export async function loadDailyRecommendations(input: {
   const hours = Math.max(6, Math.min(168, Math.floor(input.hours ?? 48)));
   const until = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
-  const picks = await (prisma.analysisPick as unknown as {
-    findMany(args: unknown): Promise<DailyPickRecord[]>;
-  }).findMany({
+  const [picks, plannedItems] = await Promise.all([
+    (prisma.analysisPick as unknown as {
+      findMany(args: unknown): Promise<DailyPickRecord[]>;
+    }).findMany({
     where: {
       userId: input.userId,
       status: { in: ["WATCHING", "PLAYED"] },
@@ -150,12 +157,18 @@ export async function loadDailyRecommendations(input: {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       },
     },
-    orderBy: [
-      { match: { kickoffAt: "asc" } },
-      { createdAt: "asc" },
-      { id: "asc" },
-    ],
-  });
+      orderBy: [
+        { match: { kickoffAt: "asc" } },
+        { createdAt: "asc" },
+        { id: "asc" },
+      ],
+    }),
+    prisma.dailyPlayPlanItem.findMany({
+      where: { plan: { userId: input.userId } },
+      select: { analysisPickId: true },
+    }),
+  ]);
+  const plannedPickIds = new Set(plannedItems.map((item) => item.analysisPickId));
 
   const groupedSides = new Map<string, Set<string>>();
   for (const item of picks) {
@@ -225,6 +238,7 @@ export async function loadDailyRecommendations(input: {
     recommendations: visible,
     allRecommendations: recommendations,
     leagues,
+    plannedPickIds,
     summary: {
       total: recommendations.length,
       top: recommendations.filter((item) => item.evaluation.priority === "TOP").length,

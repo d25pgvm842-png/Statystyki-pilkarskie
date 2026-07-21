@@ -16,6 +16,8 @@ function strategy(overrides: Partial<DailyStrategySupport> = {}): DailyStrategyS
     healthStatus: "HEALTHY",
     healthScore: 88,
     exposureStatus: "OK",
+    recommendedStake: 20,
+    stakeMode: "FIXED",
     ...overrides,
   };
 }
