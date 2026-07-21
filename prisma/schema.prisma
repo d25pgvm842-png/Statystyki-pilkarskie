@@ -86,6 +86,12 @@ enum AnalysisPickSource {
   MANUAL
 }
 
+enum AnalysisDecisionTiming {
+  PRE_MATCH
+  LATE
+  UNKNOWN
+}
+
 enum ExternalEntityType {
   LEAGUE
   TEAM
@@ -407,6 +413,8 @@ model AnalysisPick {
   oppositeOdds            Float?
   closingOdds             Float?
   quoteCapturedAt         DateTime?
+  decisionAt              DateTime               @default(now())
+  decisionTiming          AnalysisDecisionTiming @default(UNKNOWN)
   modelProbability        Float?
   fairOdds                Float?
   bookmakerMargin         Float?
@@ -432,6 +440,7 @@ model AnalysisPick {
 
   @@unique([userId, fingerprint])
   @@index([userId, status, createdAt])
+  @@index([userId, decisionTiming, decisionAt])
   @@index([matchId])
   @@index([status, matchId])
   @@index([selectedTeamId])
