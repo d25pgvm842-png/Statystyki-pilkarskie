@@ -118,6 +118,8 @@ model User {
   analysisStrategyVersions AnalysisStrategyVersion[]
   strategyForwardSignals StrategyForwardSignal[]
   strategyHealthEvents StrategyHealthEvent[]
+  dailyPlayPlans DailyPlayPlan[]
+  dailyPlayPlanEvents DailyPlayPlanEvent[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -426,6 +428,7 @@ model AnalysisPick {
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
   strategyForwardSignals  StrategyForwardSignal[]
+  dailyPlayPlanItems       DailyPlayPlanItem[]
 
   @@unique([userId, fingerprint])
   @@index([userId, status, createdAt])
@@ -588,6 +591,66 @@ model StrategyForwardSignal {
   @@index([matchId])
   @@index([leagueId, kickoffAt])
   @@index([statKey, kickoffAt])
+}
+
+
+model DailyPlayPlan {
+  id                       String   @id @default(cuid())
+  userId                   String
+  planDate                 DateTime
+  status                   String   @default("DRAFT")
+  bankroll                 Float    @default(1000)
+  maxDailyStakePercent     Float    @default(10)
+  maxMatchStakePercent     Float    @default(5)
+  maxLeagueStakePercent    Float    @default(7.5)
+  maxMarketStakePercent    Float    @default(7.5)
+  note                     String?
+  approvedAt               DateTime?
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items                    DailyPlayPlanItem[]
+  events                   DailyPlayPlanEvent[]
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([userId, planDate])
+  @@index([userId, status, planDate])
+}
+
+model DailyPlayPlanItem {
+  id                String   @id @default(cuid())
+  planId            String
+  analysisPickId    String
+  status            String   @default("SELECTED")
+  priority          String
+  score             Int
+  snapshot          Json
+  plannedStake      Float?
+  oddsSnapshot      Float?
+  bookmakerSnapshot String?
+  reason            String?
+  playedAt          DateTime?
+  plan              DailyPlayPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  analysisPick      AnalysisPick  @relation(fields: [analysisPickId], references: [id], onDelete: Restrict)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([planId, analysisPickId])
+  @@index([analysisPickId])
+  @@index([planId, status, createdAt])
+}
+
+model DailyPlayPlanEvent {
+  id        String   @id @default(cuid())
+  planId    String
+  userId    String
+  type      String
+  details   Json?
+  plan      DailyPlayPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([planId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model LoginThrottle {
