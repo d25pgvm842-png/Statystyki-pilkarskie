@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/db";
 import { getRuntimeEnv } from "@/lib/env";
+import { hasCapability, type AppCapability } from "@/lib/permissions";
 
 const COOKIE_NAME = "staty_session";
 const secret = new TextEncoder().encode(getRuntimeEnv().AUTH_SECRET);
@@ -50,4 +51,21 @@ export async function requireUser() {
   const user = await getCurrentUser();
   if (!user?.active) redirect("/login");
   return user;
+}
+
+
+export async function requireCapability(capability: AppCapability) {
+  const user = await requireUser();
+  if (!hasCapability(user.role, capability)) {
+    throw new Error("Brak uprawnień do wykonania tej operacji.");
+  }
+  return user;
+}
+
+export function requireWriteUser() {
+  return requireCapability("WRITE");
+}
+
+export function requireAdminUser() {
+  return requireCapability("ADMIN");
 }

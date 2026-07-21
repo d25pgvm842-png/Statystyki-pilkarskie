@@ -11,7 +11,7 @@ import {
   LineScope,
   MatchStatus,
 } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   captureForwardSignalsForPick,
@@ -26,6 +26,7 @@ import {
   type TrendStatKey,
 } from "@/lib/stats/trends";
 import { valueToString } from "@/lib/utils";
+import { classifyDecisionTiming } from "@/lib/stats/decision-integrity";
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -124,7 +125,7 @@ function auditChanges(
 }
 
 export async function addAnalysisPickAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const matchId = text(formData, "matchId");
   const statKey = text(formData, "statKey");
   const definition = trendDefinition(statKey);
@@ -139,7 +140,7 @@ export async function addAnalysisPickAction(formData: FormData) {
 
   const match = await prisma.match.findUnique({
     where: { id: matchId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, kickoffAt: true },
   });
   if (!match) redirect(appendResult(returnTo, "error", "match"));
   if (
@@ -163,6 +164,8 @@ export async function addAnalysisPickAction(formData: FormData) {
   if (existing) redirect(appendResult(returnTo, "already"));
 
   const note = optionalText(formData, "note", 2000);
+  const decisionAt = new Date();
+  const decisionTiming = classifyDecisionTiming({ decisionAt, kickoffAt: match.kickoffAt });
   const data = {
     userId: user.id,
     matchId,
@@ -183,6 +186,8 @@ export async function addAnalysisPickAction(formData: FormData) {
     homeSample: optionalInteger(formData, "homeSample", 0, 1000000),
     awaySample: optionalInteger(formData, "awaySample", 0, 1000000),
     note,
+    decisionAt,
+    decisionTiming,
   };
 
   await prisma.$transaction(async (tx) => {
@@ -200,6 +205,8 @@ export async function addAnalysisPickAction(formData: FormData) {
             { fieldName: "threshold", oldValue: null, newValue: String(threshold) },
             { fieldName: "side", oldValue: null, newValue: side },
             { fieldName: "source", oldValue: null, newValue: source },
+            { fieldName: "decisionAt", oldValue: null, newValue: decisionAt.toISOString() },
+            { fieldName: "decisionTiming", oldValue: null, newValue: decisionTiming },
           ],
         },
       },
@@ -214,7 +221,7 @@ export async function addAnalysisPickAction(formData: FormData) {
 }
 
 export async function updateAnalysisPickAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = text(formData, "id");
   const returnTo = safeReturnPath(formData);
   const existing = await prisma.analysisPick.findFirst({
@@ -294,7 +301,7 @@ export async function updateAnalysisPickAction(formData: FormData) {
 }
 
 export async function settleAnalysisPickManuallyAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = text(formData, "id");
   const returnTo = safeReturnPath(formData);
   const existing = await prisma.analysisPick.findFirst({
@@ -337,7 +344,7 @@ export async function settleAnalysisPickManuallyAction(formData: FormData) {
 }
 
 export async function settleFinishedAnalysisPicksAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const returnTo = safeReturnPath(formData);
   const items = await prisma.analysisPick.findMany({
     where: {

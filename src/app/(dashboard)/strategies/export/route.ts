@@ -10,6 +10,7 @@ import {
   type StrategyMetrics,
   type StrategySegmentRow,
 } from "@/lib/stats/strategy-lab";
+import { BETTING_METRICS_VERSION } from "@/lib/stats/betting-metrics";
 
 function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -30,6 +31,7 @@ function safeName(value: string) {
 function appendMetrics(rows: unknown[][], title: string, metrics: StrategyMetrics) {
   rows.push([title]);
   rows.push(["metryka", "wartosc"]);
+  rows.push(["wersja_metryk", BETTING_METRICS_VERSION]);
   rows.push(["sygnaly", metrics.totalEntries]);
   rows.push(["otwarte", metrics.openEntries]);
   rows.push(["rozliczone", metrics.settledEntries]);

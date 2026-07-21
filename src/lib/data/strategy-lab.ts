@@ -78,6 +78,8 @@ export async function loadStrategyEntries(userId: string): Promise<StrategyEntry
     kickoffAt: item.match.kickoffAt,
     createdAt: item.createdAt,
     quoteCapturedAt: item.quoteCapturedAt,
+    decisionAt: item.decisionAt,
+    decisionTiming: item.decisionTiming,
     leagueId: item.match.season.league.id,
     leagueName: item.match.season.league.name,
     seasonId: item.match.season.id,

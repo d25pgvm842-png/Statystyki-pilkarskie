@@ -277,7 +277,7 @@ export default async function MonitoringPage({
                   <div><div className="text-xs text-zinc-500">Przedział 95%</div><div className="font-medium">{interval(selected.health.historicalHitRateInterval)}</div></div>
                   <div><div className="text-xs text-zinc-500">ROI</div><div className="font-medium">{percent(selected.historical.validation.roi)}</div></div>
                   <div><div className="text-xs text-zinc-500">CLV</div><div className="font-medium">{percent(selected.historical.validation.averageClv)}</div></div>
-                  <div><div className="text-xs text-zinc-500">Drawdown</div><div className="font-medium">{currency(selected.historical.validation.maxDrawdown)}</div></div>
+                  <div><div className="text-xs text-zinc-500">Drawdown (kwota)</div><div className="font-medium">{currency(selected.historical.validation.maxDrawdown)}</div></div>
                 </CardContent>
               </Card>
 
@@ -289,7 +289,7 @@ export default async function MonitoringPage({
                   <div><div className="text-xs text-zinc-500">Przedział 95%</div><div className="font-medium">{interval(selected.health.forwardHitRateInterval)}</div></div>
                   <div><div className="text-xs text-zinc-500">ROI</div><div className="font-medium">{percent(selected.forward.selected.roi)}</div></div>
                   <div><div className="text-xs text-zinc-500">CLV</div><div className="font-medium">{percent(selected.forward.averageClv)}</div></div>
-                  <div><div className="text-xs text-zinc-500">Drawdown</div><div className="font-medium">{currency(selected.forward.selected.maxDrawdown)}</div></div>
+                  <div><div className="text-xs text-zinc-500">Drawdown (kwota)</div><div className="font-medium">{currency(selected.forward.selected.maxDrawdown)}</div></div>
                 </CardContent>
               </Card>
             </div>
@@ -313,7 +313,7 @@ export default async function MonitoringPage({
                     <input name="minForwardSample" type="number" min="5" max="1000" step="1" defaultValue={selected.version.minForwardSample} className="h-10 rounded-lg border border-zinc-300 bg-transparent px-3 dark:border-zinc-700" />
                   </label>
                   <label className="grid gap-1 text-sm">
-                    <span>Limit drawdownu %</span>
+                    <span>Limit drawdownu (% kapitału początkowego)</span>
                     <input name="maxDrawdownPercent" type="number" min="0.1" max="100" step="0.1" defaultValue={selected.version.maxDrawdownPercent} className="h-10 rounded-lg border border-zinc-300 bg-transparent px-3 dark:border-zinc-700" />
                   </label>
                   <label className="grid gap-1 text-sm">
@@ -322,7 +322,7 @@ export default async function MonitoringPage({
                   </label>
                   <div className="sm:col-span-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="text-xs text-zinc-500">
-                      Aktualnie: drawdown {percent(selected.health.drawdownPercent)} · strata {percent(selected.health.lossPercent)}.
+                      Aktualnie: drawdown względem kapitału początkowego {percent(selected.health.drawdownPercent)} · strata {percent(selected.health.lossPercent)}.
                     </div>
                     <Button type="submit">Zapisz i przelicz</Button>
                   </div>

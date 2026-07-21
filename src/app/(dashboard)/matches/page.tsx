@@ -15,6 +15,8 @@ import {
 import { calculateMatchSummary } from "@/lib/stats/match-analytics";
 import { prisma } from "@/lib/db";
 import { formatNumber } from "@/lib/utils";
+import { requireUser } from "@/lib/auth";
+import { canWrite } from "@/lib/permissions";
 
 const validStatuses = new Set(Object.values(MatchStatus));
 
@@ -29,7 +31,8 @@ function dateBoundary(value: string, endOfDay = false) {
 }
 
 export default async function MatchesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const params = await searchParams;
+  const [params, user] = await Promise.all([searchParams, requireUser()]);
+  const writable = canWrite(user.role);
   const deleted = stringParam(params.deleted) === "1";
   const leagueId = stringParam(params.leagueId);
   const seasonId = stringParam(params.seasonId);
@@ -89,7 +92,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-2xl font-semibold">Mecze</h1><p className="text-sm text-zinc-500">Filtry, szybkie średnie oraz pełny podgląd każdego spotkania.</p></div>
-        <Link href="/matches/new" className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700"><PlusCircle size={16} className="mr-2" />Dodaj mecz</Link>
+        {writable ? <Link href="/matches/new" data-requires-write className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700"><PlusCircle size={16} className="mr-2" />Dodaj mecz</Link> : null}
       </div>
 
       {deleted ? (
@@ -133,7 +136,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
                   <td className="p-3">{match.stats?.homeYellowCards ?? "–"}:{match.stats?.awayYellowCards ?? "–"}</td>
                   <td className="p-3">{match.stats?.homeShotsOnTarget ?? "–"}:{match.stats?.awayShotsOnTarget ?? "–"}</td>
                   <td className="p-3">{match.stats?.homeFouls ?? "–"}:{match.stats?.awayFouls ?? "–"}</td>
-                  <td className="p-3"><div className="flex items-center gap-1"><Link href={`/matches/${match.id}`} className="inline-flex rounded-lg p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700" aria-label="Podgląd"><Eye size={16} /></Link><Link href={`/matches/${match.id}/edit`} className="inline-flex rounded-lg p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700" aria-label="Edytuj"><Pencil size={16} /></Link></div></td>
+                  <td className="p-3"><div className="flex items-center gap-1"><Link href={`/matches/${match.id}`} className="inline-flex rounded-lg p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700" aria-label="Podgląd"><Eye size={16} /></Link>{writable ? <Link href={`/matches/${match.id}/edit`} data-requires-write className="inline-flex rounded-lg p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700" aria-label="Edytuj"><Pencil size={16} /></Link> : null}</div></td>
                 </tr>
               ))}
               {!matches.length ? <tr><td colSpan={11} className="p-8 text-center text-zinc-500">Brak meczów dla wybranych filtrów.</td></tr> : null}

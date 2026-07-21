@@ -18,6 +18,15 @@ type MatchObservation = {
   stats: StatsRecord | null;
 };
 
+export function completePairTotal(
+  homeValue: number | null | undefined,
+  awayValue: number | null | undefined,
+) {
+  return typeof homeValue === "number" && typeof awayValue === "number"
+    ? homeValue + awayValue
+    : null;
+}
+
 export type TotalMetricSummary = {
   key: (typeof MATCH_TOTAL_STAT_DEFINITIONS)[number]["key"];
   label: string;
@@ -32,9 +41,7 @@ function totalFor(stats: StatsRecord | null, home: StatField, away: StatField) {
   if (!stats) return null;
   const homeValue = stats[home];
   const awayValue = stats[away];
-  return typeof homeValue === "number" && typeof awayValue === "number"
-    ? homeValue + awayValue
-    : null;
+  return completePairTotal(homeValue, awayValue);
 }
 
 function summarize(values: number[]) {

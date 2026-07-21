@@ -5,6 +5,7 @@ import {
   prepareHistoricalPublicImportAction,
 } from "@/lib/actions/public-data-actions";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
@@ -36,7 +37,7 @@ export default async function PublicDataPage({
   }>;
 }) {
   const user = await requireUser();
-  if (user.role !== "ADMIN") {
+  if (!canAdminister(user.role)) {
     return (
       <Card className="p-6">
         <div className="text-sm text-amber-700 dark:text-amber-300">

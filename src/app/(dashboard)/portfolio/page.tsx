@@ -94,7 +94,7 @@ function FinancialCard({
       <div className="mt-2 text-xs text-zinc-500">
         {metrics.financialEntries} rozliczeń · {currency(metrics.profit)} / {currency(metrics.turnover)}
       </div>
-      <div className="mt-1 text-xs text-zinc-500">drawdown {currency(metrics.maxDrawdown)}</div>
+      <div className="mt-1 text-xs text-zinc-500">drawdown (kwota) {currency(metrics.maxDrawdown)}</div>
     </Card>
   );
 }
@@ -257,7 +257,7 @@ export default async function PortfolioPage({
                   <div><div className="text-xs text-zinc-500">Trafność</div><div className="font-medium">{percent(selected.historical.validation.hitRate)}</div></div>
                   <div><div className="text-xs text-zinc-500">ROI</div><div className="font-medium">{percent(selected.historical.validation.roi)}</div></div>
                   <div><div className="text-xs text-zinc-500">CLV</div><div className="font-medium">{percent(selected.historical.validation.averageClv)}</div></div>
-                  <div><div className="text-xs text-zinc-500">Drawdown</div><div className="font-medium">{currency(selected.historical.validation.maxDrawdown)}</div></div>
+                  <div><div className="text-xs text-zinc-500">Drawdown (kwota)</div><div className="font-medium">{currency(selected.historical.validation.maxDrawdown)}</div></div>
                 </CardContent>
               </Card>
 
@@ -269,7 +269,7 @@ export default async function PortfolioPage({
                   <div><div className="text-xs text-zinc-500">Trafność</div><div className="font-medium">{percent(selected.forward.hitRate)}</div></div>
                   <div><div className="text-xs text-zinc-500">ROI</div><div className="font-medium">{percent(selected.forward.selected.roi)}</div></div>
                   <div><div className="text-xs text-zinc-500">CLV</div><div className="font-medium">{percent(selected.forward.averageClv)}</div></div>
-                  <div><div className="text-xs text-zinc-500">Drawdown</div><div className="font-medium">{currency(selected.forward.selected.maxDrawdown)}</div></div>
+                  <div><div className="text-xs text-zinc-500">Drawdown (kwota)</div><div className="font-medium">{currency(selected.forward.selected.maxDrawdown)}</div></div>
                 </CardContent>
               </Card>
             </div>

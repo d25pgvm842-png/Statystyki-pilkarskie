@@ -3,6 +3,7 @@ import {
   selectionProfit,
   type JournalResult,
 } from "@/lib/stats/analysis-journal";
+import { summarizeBettingFinancials } from "@/lib/stats/betting-metrics";
 
 export type ForwardStakeMode = "FIXED" | "BANKROLL_PERCENT" | "KELLY";
 
@@ -291,43 +292,20 @@ function financialMetrics(
   entries: ForwardSignalMetricEntry[],
   stake: (entry: ForwardSignalMetricEntry) => number | null,
 ): ForwardFinancialMetrics {
-  const rows = entries.flatMap((entry) => {
-    if (entry.result !== "WIN" && entry.result !== "LOSS") return [];
-    const selectedStake = stake(entry);
-    const profit = selectionProfit({
+  const financial = summarizeBettingFinancials({
+    entries,
+    financialInput: (entry) => ({
       result: entry.result,
       odds: entry.oddsAtSignal,
-      stake: selectedStake,
-    });
-    return profit === null || selectedStake === null
-      ? []
-      : [{ entry, stake: selectedStake, profit }];
+      stake: stake(entry),
+    }),
+    compare: (left, right) =>
+      left.kickoffAt.getTime() - right.kickoffAt.getTime()
+      || left.decisionAt.getTime() - right.decisionAt.getTime()
+      || left.id.localeCompare(right.id),
   });
 
-  const turnover = rows.reduce((sum, row) => sum + row.stake, 0);
-  const profit = rows.reduce((sum, row) => sum + row.profit, 0);
-  let cumulative = 0;
-  let peak = 0;
-  let maximumDrawdown = 0;
-
-  for (const row of [...rows].sort(
-    (left, right) =>
-      left.entry.kickoffAt.getTime() - right.entry.kickoffAt.getTime()
-      || left.entry.decisionAt.getTime() - right.entry.decisionAt.getTime()
-      || left.entry.id.localeCompare(right.entry.id),
-  )) {
-    cumulative += row.profit;
-    peak = Math.max(peak, cumulative);
-    maximumDrawdown = Math.max(maximumDrawdown, peak - cumulative);
-  }
-
-  return {
-    financialEntries: rows.length,
-    turnover: money(turnover),
-    profit: money(profit),
-    roi: turnover > 0 ? (profit / turnover) * 100 : null,
-    maxDrawdown: rows.length ? money(maximumDrawdown) : null,
-  };
+  return financial;
 }
 
 export function summarizeForwardSignals(entries: ForwardSignalMetricEntry[]): ForwardMetrics {

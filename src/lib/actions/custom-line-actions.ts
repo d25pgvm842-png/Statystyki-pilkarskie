@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { LineScope } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
 
@@ -32,7 +32,7 @@ function revalidateAnalysisPages() {
 }
 
 export async function createCustomLineAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const name = text(formData, "name");
   const statKey = text(formData, "statKey");
   const scope = text(formData, "scope");
@@ -60,7 +60,7 @@ export async function createCustomLineAction(formData: FormData) {
 }
 
 export async function toggleCustomLineAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = text(formData, "id");
   const line = await prisma.customLine.findFirst({ where: { id, userId: user.id } });
   if (!line) throw new Error("Linia nie istnieje.");
@@ -71,7 +71,7 @@ export async function toggleCustomLineAction(formData: FormData) {
 }
 
 export async function deleteCustomLineAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = text(formData, "id");
   await prisma.customLine.deleteMany({ where: { id, userId: user.id } });
   revalidateAnalysisPages();

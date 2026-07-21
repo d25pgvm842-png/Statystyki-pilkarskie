@@ -16,6 +16,8 @@ function entry(overrides: Partial<StrategyEntry> = {}): StrategyEntry {
     kickoffAt: overrides.kickoffAt ?? new Date("2026-01-01T12:00:00.000Z"),
     createdAt: overrides.createdAt ?? new Date("2025-12-30T12:00:00.000Z"),
     quoteCapturedAt: overrides.quoteCapturedAt ?? null,
+    decisionAt: overrides.decisionAt ?? overrides.createdAt ?? new Date("2025-12-30T12:00:00.000Z"),
+    decisionTiming: overrides.decisionTiming ?? "PRE_MATCH",
     leagueId: overrides.leagueId ?? "league-1",
     leagueName: overrides.leagueName ?? "Liga testowa",
     seasonId: overrides.seasonId ?? "season-1",
@@ -203,4 +205,18 @@ test("opis reguły pokazuje najważniejsze warunki", () => {
   assert.match(summary, /OVER/);
   assert.match(summary, /EV ≥ 5%/);
   assert.match(summary, /próba ≥ 10/);
+});
+
+
+test("walidacja historyczna wyklucza LATE i decyzję równą kickoffowi", () => {
+  const kickoffAt = new Date("2026-01-01T12:00:00.000Z");
+  const evaluation = evaluateStrategy([
+    entry({ id: "pre", kickoffAt, decisionAt: new Date("2026-01-01T11:59:59.999Z"), decisionTiming: "PRE_MATCH" }),
+    entry({ id: "late", kickoffAt, decisionAt: kickoffAt, decisionTiming: "LATE" }),
+    entry({ id: "unknown", kickoffAt, decisionAt: new Date("2026-01-01T11:00:00.000Z"), decisionTiming: "UNKNOWN" }),
+  ], baseStrategy, new Date("2027-01-01T00:00:00Z"));
+
+  assert.deepEqual(evaluation.matchedEntries.map((item) => item.id), ["pre"]);
+  assert.equal(evaluation.excludedTimingEntries, 2);
+  assert.equal(evaluation.metrics.resolvedEntries, 1);
 });

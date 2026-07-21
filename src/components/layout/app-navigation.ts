@@ -1,3 +1,5 @@
+import { canAdminister } from "@/lib/permissions";
+
 export type NavigationItem = {
   href: string;
   label: string;
@@ -70,7 +72,7 @@ export function navigationGroupsForRole(role: string) {
   return navigationGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.adminOnly || role === "ADMIN"),
+      items: group.items.filter((item) => !item.adminOnly || canAdminister(role)),
     }))
     .filter((group) => group.items.length > 0);
 }

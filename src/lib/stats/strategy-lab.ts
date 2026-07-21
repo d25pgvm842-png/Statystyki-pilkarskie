@@ -1,9 +1,13 @@
 import {
   selectionClv,
-  selectionProfit,
   type JournalResult,
   type JournalSide,
 } from "@/lib/stats/analysis-journal";
+import { summarizeBettingFinancials } from "@/lib/stats/betting-metrics";
+import {
+  isHistoricalDecisionEligible,
+  type AnalysisDecisionTiming,
+} from "@/lib/stats/decision-integrity";
 
 export type StrategyTarget = "MATCH_TOTAL" | "HOME_TEAM" | "AWAY_TEAM" | "UNKNOWN";
 export type StrategyDecisionMode = "ALL" | "PLAYED" | "SETTLED" | "WATCHING";
@@ -49,6 +53,8 @@ export type StrategyEntry = {
   kickoffAt: Date;
   createdAt: Date;
   quoteCapturedAt: Date | null;
+  decisionAt: Date;
+  decisionTiming: AnalysisDecisionTiming;
   leagueId: string;
   leagueName: string;
   seasonId: string;
@@ -130,6 +136,7 @@ export type StrategyEvaluation = {
   stability: StrategyStability;
   trainingEntries: number;
   validationEntries: number;
+  excludedTimingEntries: number;
   byMonth: StrategyMonthRow[];
   byLeague: StrategySegmentRow[];
   byMarket: StrategySegmentRow[];
@@ -142,6 +149,7 @@ export type StrategyHistoricalSnapshot = {
   matchedEntries: number;
   trainingEntries: number;
   validationEntries: number;
+  excludedTimingEntries?: number;
   stability: StrategyStability;
   metrics: StrategyMetrics;
   training: StrategyMetrics;
@@ -157,6 +165,7 @@ export function snapshotStrategyEvaluation(
     matchedEntries: evaluation.matchedEntries.length,
     trainingEntries: evaluation.trainingEntries,
     validationEntries: evaluation.validationEntries,
+    excludedTimingEntries: evaluation.excludedTimingEntries,
     stability: evaluation.stability,
     metrics: evaluation.metrics,
     training: evaluation.training,
@@ -266,7 +275,7 @@ function chronological(entries: StrategyEntry[]) {
   return [...entries].sort(
     (left, right) =>
       left.kickoffAt.getTime() - right.kickoffAt.getTime()
-      || left.createdAt.getTime() - right.createdAt.getTime()
+      || left.decisionAt.getTime() - right.decisionAt.getTime()
       || left.id.localeCompare(right.id),
   );
 }
@@ -288,20 +297,6 @@ function longestStreak(entries: StrategyEntry[], result: "WIN" | "LOSS") {
   return longest;
 }
 
-function drawdown(financialRows: Array<{ entry: StrategyEntry; profit: number }>) {
-  if (!financialRows.length) return null;
-  let cumulative = 0;
-  let peak = 0;
-  let maximum = 0;
-  for (const row of [...financialRows].sort(
-    (left, right) => left.entry.kickoffAt.getTime() - right.entry.kickoffAt.getTime(),
-  )) {
-    cumulative += row.profit;
-    peak = Math.max(peak, cumulative);
-    maximum = Math.max(maximum, peak - cumulative);
-  }
-  return Math.round(maximum * 100) / 100;
-}
 
 export function summarizeStrategy(entries: StrategyEntry[]): StrategyMetrics {
   const resolved = entries.filter(
@@ -323,20 +318,18 @@ export function summarizeStrategy(entries: StrategyEntry[]): StrategyMetrics {
     return ((probability / 100) - outcome) ** 2;
   });
 
-  const financialRows = entries.flatMap((entry) => {
-    if (entry.status !== "SETTLED") return [];
-    const profit = selectionProfit({
+  const financial = summarizeBettingFinancials({
+    entries: entries.filter((entry) => entry.status === "SETTLED"),
+    financialInput: (entry) => ({
       result: entry.result,
       odds: entry.odds,
       stake: entry.stake,
-    });
-    return profit === null ? [] : [{ entry, profit }];
+    }),
+    compare: (left, right) =>
+      left.kickoffAt.getTime() - right.kickoffAt.getTime()
+      || left.decisionAt.getTime() - right.decisionAt.getTime()
+      || left.id.localeCompare(right.id),
   });
-  const turnover = financialRows.reduce((sum, row) => {
-    const stake = finite(row.entry.stake);
-    return stake !== null && stake > 0 ? sum + stake : sum;
-  }, 0);
-  const profit = financialRows.reduce((sum, row) => sum + row.profit, 0);
   const expectedValues = entries.flatMap((entry) => {
     const value = finite(entry.expectedValue);
     return value === null ? [] : [value];
@@ -375,11 +368,11 @@ export function summarizeStrategy(entries: StrategyEntry[]): StrategyMetrics {
     averageExpectedValue: average(expectedValues),
     averageOdds: average(odds),
     averageClv: average(clv),
-    financialEntries: financialRows.length,
-    turnover,
-    profit,
-    roi: turnover > 0 ? (profit / turnover) * 100 : null,
-    maxDrawdown: drawdown(financialRows),
+    financialEntries: financial.financialEntries,
+    turnover: financial.turnover,
+    profit: financial.profit,
+    roi: financial.roi,
+    maxDrawdown: financial.maxDrawdown,
     longestWinStreak: longestStreak(entries, "WIN"),
     longestLossStreak: longestStreak(entries, "LOSS"),
     smallSample: resolved.length < 10,
@@ -454,7 +447,13 @@ export function evaluateStrategy(
   strategy: StrategyConfig,
   now = new Date(),
 ): StrategyEvaluation {
-  const matchedEntries = chronological(entries.filter((entry) => matchesStrategy(entry, strategy)));
+  const matchingEntries = chronological(entries.filter((entry) => matchesStrategy(entry, strategy)));
+  const matchedEntries = matchingEntries.filter((entry) => isHistoricalDecisionEligible({
+    decisionTiming: entry.decisionTiming,
+    decisionAt: entry.decisionAt,
+    kickoffAt: entry.kickoffAt,
+  }));
+  const excludedTimingEntries = matchingEntries.length - matchedEntries.length;
   const resolvedForSplit = matchedEntries.filter(
     (entry) => entry.status === "SETTLED" && (entry.result === "WIN" || entry.result === "LOSS"),
   );
@@ -481,6 +480,7 @@ export function evaluateStrategy(
     stability: stabilityFor(training, validation),
     trainingEntries: trainingEntries.length,
     validationEntries: validationEntries.length,
+    excludedTimingEntries,
     byMonth: byMonth(matchedEntries),
     byLeague: segment(matchedEntries, (entry) => ({
       key: entry.leagueId,

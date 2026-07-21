@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { mergeDuplicateTeamAction } from "@/lib/actions/team-duplicate-actions";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import {
   DUPLICATE_SUGGESTION_SCORE,
@@ -29,7 +30,7 @@ export default async function TeamDuplicatesPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await requireUser();
-  if (user.role !== "ADMIN") {
+  if (!canAdminister(user.role)) {
     return (
       <Card className="p-6">
         <div className="flex items-center gap-3 text-amber-700 dark:text-amber-300">

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@/generated/prisma/client";
 import { AuditEntityType } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { evaluateAndPersistStrategyHealth } from "@/lib/data/strategy-monitoring";
 import { loadStrategyEntries } from "@/lib/data/strategy-lab";
 import { syncActiveForwardSignals } from "@/lib/data/strategy-forward";
@@ -119,7 +119,7 @@ function revalidateStrategyPaths() {
 }
 
 export async function activateStrategyForwardAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const strategyId = text(formData, "strategyId");
   if (!strategyId) redirect("/strategies?error=missing");
 
@@ -229,7 +229,7 @@ export async function activateStrategyForwardAction(formData: FormData) {
 }
 
 export async function approveStrategyForwardAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const versionId = text(formData, "versionId");
   const version = await prisma.analysisStrategyVersion.findFirst({
     where: { id: versionId, userId: user.id },
@@ -267,7 +267,7 @@ export async function approveStrategyForwardAction(formData: FormData) {
 }
 
 export async function pauseStrategyForwardAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const versionId = text(formData, "versionId");
   const version = await prisma.analysisStrategyVersion.findFirst({
     where: { id: versionId, userId: user.id },
@@ -309,7 +309,7 @@ export async function pauseStrategyForwardAction(formData: FormData) {
 }
 
 export async function archiveStrategyVersionAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const versionId = text(formData, "versionId");
   const version = await prisma.analysisStrategyVersion.findFirst({
     where: { id: versionId, userId: user.id },
@@ -358,7 +358,7 @@ export async function archiveStrategyVersionAction(formData: FormData) {
 }
 
 export async function prepareNewStrategyVersionAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const strategyId = text(formData, "strategyId");
   const strategy = await prisma.analysisStrategy.findFirst({
     where: { id: strategyId, userId: user.id },
@@ -398,7 +398,7 @@ export async function prepareNewStrategyVersionAction(formData: FormData) {
 }
 
 export async function markStrategyHistoricallyValidatedAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const strategyId = text(formData, "strategyId");
   const strategy = await prisma.analysisStrategy.findFirst({
     where: { id: strategyId, userId: user.id },
@@ -434,7 +434,7 @@ export async function markStrategyHistoricallyValidatedAction(formData: FormData
 }
 
 export async function syncStrategyForwardSignalsAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const versionId = text(formData, "versionId");
   const captured = await syncActiveForwardSignals(user.id);
   await evaluateAndPersistStrategyHealth({

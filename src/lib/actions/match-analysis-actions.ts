@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuditEntityType } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { valueToString } from "@/lib/utils";
 
@@ -18,7 +18,7 @@ function safeReturnPath(formData: FormData, matchId: string) {
 }
 
 export async function saveMatchAnalysisNoteAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const matchId = text(formData, "matchId");
   const content = text(formData, "note");
   if (!matchId) redirect("/analysis");

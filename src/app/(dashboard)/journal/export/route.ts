@@ -6,6 +6,7 @@ import {
   type JournalAnalyticsRow,
 } from "@/lib/stats/analysis-journal";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
+import { BETTING_METRICS_VERSION } from "@/lib/stats/betting-metrics";
 
 function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -119,6 +120,7 @@ export async function GET(request: Request) {
       [],
       ["PODSUMOWANIE"],
       ["metryka", "wartosc"],
+      ["wersja_metryk", BETTING_METRICS_VERSION],
       ["pozycje", items.length],
       ["obserwowane", metrics.watching],
       ["zagrane_otwarte", metrics.playedOpen],
@@ -153,6 +155,7 @@ export async function GET(request: Request) {
 
   const rows: unknown[][] = [
     ["metryka", "wartosc"],
+    ["wersja_metryk", BETTING_METRICS_VERSION],
     ["obserwowane", metrics.watching],
     ["zagrane_otwarte", metrics.playedOpen],
     ["rozliczone", metrics.settled],
@@ -189,6 +192,8 @@ export async function GET(request: Request) {
       "kurs",
       "kurs_przeciwnej_strony",
       "czas_pobrania_kursu",
+      "czas_decyzji",
+      "kwalifikacja_czasu",
       "model_probability",
       "fair_odds",
       "marza_bukmachera",
@@ -237,6 +242,8 @@ export async function GET(request: Request) {
       item.odds,
       item.oppositeOdds,
       item.quoteCapturedAt?.toISOString() ?? null,
+      item.decisionAt.toISOString(),
+      item.decisionTiming,
       item.modelProbability,
       item.fairOdds,
       item.bookmakerMargin,

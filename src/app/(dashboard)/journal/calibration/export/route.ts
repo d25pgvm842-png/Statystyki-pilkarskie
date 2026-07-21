@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { loadAnalysisJournal } from "@/lib/data/analysis-journal";
 import type { CalibrationSegmentRow } from "@/lib/stats/journal-calibration";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
+import { BETTING_METRICS_VERSION } from "@/lib/stats/betting-metrics";
 
 function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -116,6 +117,7 @@ export async function GET(request: Request) {
     [],
     ["PODSUMOWANIE"],
     ["metryka", "wartosc"],
+    ["wersja_metryk", BETTING_METRICS_VERSION],
     ["pozycje_w_filtrze", summary.totalEntries],
     ["snapshoty_modelu", summary.snapshotEntries],
     ["pokrycie_snapshotow_procent", summary.snapshotCoverage],

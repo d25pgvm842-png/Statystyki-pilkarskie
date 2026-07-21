@@ -145,7 +145,7 @@ test("procent kapitału i Kelly używają kapitału z chwili sygnału", () => {
   assert.equal(result.recommendedStake, 22);
 });
 
-test("void i push nie zwiększają obrotu", () => {
+test("push zwiększa obrót, a void nie", () => {
   const base = {
     decisionAt: new Date("2026-01-01T10:00:00Z"),
     kickoffAt: new Date("2026-01-02T10:00:00Z"),
@@ -161,9 +161,10 @@ test("void i push nie zwiększają obrotu", () => {
     { ...base, id: "void", result: "VOID" },
     { ...base, id: "push", result: "PUSH" },
   ]);
-  assert.equal(metrics.fixed.financialEntries, 0);
-  assert.equal(metrics.fixed.turnover, 0);
-  assert.equal(metrics.fixed.roi, null);
+  assert.equal(metrics.fixed.financialEntries, 1);
+  assert.equal(metrics.fixed.turnover, 10);
+  assert.equal(metrics.fixed.profit, 0);
+  assert.equal(metrics.fixed.roi, 0);
 });
 
 test("test forward nie przyjmuje decyzji wstecz ani po rozpoczęciu meczu", () => {

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuditEntityType, DataSourceType } from "@/generated/prisma/enums";
 import { DELETE_MATCH_CONFIRMATION, isDeleteMatchConfirmationValid } from "@/lib/backup/delete-confirmation";
-import { requireUser } from "@/lib/auth";
+import { requireUser, requireWriteUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { valueToString } from "@/lib/utils";
 import { matchFormSchema, type MatchFormData } from "@/lib/validation/match";
@@ -55,7 +56,7 @@ async function validateRelations(data: MatchFormData, editingId?: string) {
 }
 
 export async function createMatchAction(_: MatchActionState, formData: FormData): Promise<MatchActionState> {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const parsed = matchFormSchema.safeParse(objectFromForm(formData));
   if (!parsed.success) return { message: "Popraw oznaczone pola.", errors: parsed.error.flatten().fieldErrors };
 
@@ -117,7 +118,7 @@ export async function createMatchAction(_: MatchActionState, formData: FormData)
 }
 
 export async function updateMatchAction(_: MatchActionState, formData: FormData): Promise<MatchActionState> {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const parsed = matchFormSchema.safeParse(objectFromForm(formData));
   if (!parsed.success) return { message: "Popraw oznaczone pola.", errors: parsed.error.flatten().fieldErrors };
   if (!parsed.data.matchId) return { message: "Brak identyfikatora meczu." };
@@ -211,7 +212,7 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
 
 export async function deleteMatchAction(_: MatchActionState, formData: FormData): Promise<MatchActionState> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return { message: "Tylko administrator może usuwać mecze." };
+  if (!canAdminister(user.role)) return { message: "Tylko administrator może usuwać mecze." };
 
   const matchId = String(formData.get("matchId") ?? "").trim();
   if (!matchId) return { message: "Brak identyfikatora meczu." };

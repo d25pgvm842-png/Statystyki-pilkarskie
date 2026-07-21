@@ -647,6 +647,12 @@ export default async function StrategiesPage({
             </CardHeader>
           </Card>
 
+          {selected.evaluation.excludedTimingEntries > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Z walidacji historycznej wykluczono {selected.evaluation.excludedTimingEntries} decyzji oznaczonych jako LATE lub z niepewnym czasem. Pozostają one w Dzienniku.
+            </div>
+          ) : null}
+
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <MetricCard label="Sygnały" value={selected.evaluation.metrics.totalEntries} note={`${selected.evaluation.metrics.openEntries} otwartych`} />
             <MetricCard label="Rozliczone W/L" value={selected.evaluation.metrics.resolvedEntries} note={`${selected.evaluation.metrics.wins}T · ${selected.evaluation.metrics.losses}N`} />

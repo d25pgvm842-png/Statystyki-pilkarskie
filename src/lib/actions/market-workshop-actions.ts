@@ -10,10 +10,11 @@ import {
   LineScope,
   MatchStatus,
 } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { loadMarketWorkshop } from "@/lib/data/market-workshop";
 import { prisma } from "@/lib/db";
 import { captureForwardSignalsForPick } from "@/lib/data/strategy-forward";
+import { classifyDecisionTiming } from "@/lib/stats/decision-integrity";
 import { buildAnalysisPickFingerprint } from "@/lib/stats/analysis-journal";
 import {
   isHalfLine,
@@ -76,7 +77,7 @@ function appendResult(path: string, key: string, value = "1") {
 }
 
 export async function saveMarketWorkshopPickAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const returnTo = safeReturnPath(formData);
   const matchId = text(formData, "matchId");
   const statKey = text(formData, "statKey") as TrendStatKey;
@@ -134,6 +135,11 @@ export async function saveMarketWorkshopPickAction(formData: FormData) {
   });
   if (existing) redirect(appendResult(returnTo, "workshopAlready"));
 
+  const decisionAt = quoteCapturedAt;
+  const decisionTiming = classifyDecisionTiming({
+    decisionAt,
+    kickoffAt: loaded.match.kickoffAt,
+  });
   const data = {
     userId: user.id,
     matchId,
@@ -157,6 +163,8 @@ export async function saveMarketWorkshopPickAction(formData: FormData) {
     odds: result.bookmakerOdds,
     oppositeOdds: selectedSide === "OVER" ? underOdds : overOdds,
     quoteCapturedAt,
+    decisionAt,
+    decisionTiming,
     modelProbability: result.modelProbability,
     fairOdds: result.fairOdds,
     bookmakerMargin: loaded.workshop.bookmakerMargin,
@@ -188,6 +196,8 @@ export async function saveMarketWorkshopPickAction(formData: FormData) {
             { fieldName: "side", oldValue: null, newValue: selectedSide },
             { fieldName: "odds", oldValue: null, newValue: String(result.bookmakerOdds) },
             { fieldName: "modelVersion", oldValue: null, newValue: loaded.workshop.modelVersion },
+            { fieldName: "decisionAt", oldValue: null, newValue: decisionAt.toISOString() },
+            { fieldName: "decisionTiming", oldValue: null, newValue: decisionTiming },
           ],
         },
       },

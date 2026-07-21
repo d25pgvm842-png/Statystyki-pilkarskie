@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { syncActiveForwardSignals } from "@/lib/data/strategy-forward";
 import { evaluateAndPersistStrategyHealth } from "@/lib/data/strategy-monitoring";
 
@@ -12,7 +12,7 @@ function hoursFromForm(formData: FormData) {
 }
 
 export async function refreshDailyRecommendationsAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const hours = hoursFromForm(formData);
   const captured = await syncActiveForwardSignals(user.id);
   const health = await evaluateAndPersistStrategyHealth({

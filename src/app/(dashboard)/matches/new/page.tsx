@@ -1,8 +1,10 @@
 import { MatchForm } from "@/components/matches/match-form";
 import { createMatchAction } from "@/lib/actions/match-actions";
 import { prisma } from "@/lib/db";
+import { requireWriteUser } from "@/lib/auth";
 
 export default async function NewMatchPage() {
+  await requireWriteUser();
   const seasons = await prisma.season.findMany({
     where: { league: { active: true } },
     include: {

@@ -1,5 +1,6 @@
 import { CurrentDataSyncTrigger } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import {
   CurrentDataSyncBusyError,
   prepareTrackedCurrentPublicBatch,
@@ -11,7 +12,7 @@ function text(value: unknown) {
 
 export async function POST(request: Request) {
   const user = await requireUser();
-  if (user.role !== "ADMIN") {
+  if (!canAdminister(user.role)) {
     return Response.json({ error: "Brak uprawnień administratora." }, { status: 403 });
   }
 

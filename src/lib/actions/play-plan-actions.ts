@@ -7,7 +7,7 @@ import {
   AnalysisPickStatus,
   AuditEntityType,
 } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import {
   loadDailyPlayPlan,
   playPlanDateFromKey,
@@ -120,7 +120,7 @@ function recommendationSnapshot(
 }
 
 export async function addRecommendationToPlayPlanAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const pickId = text(formData, "pickId");
   if (!pickId) redirect("/recommendations?error=missing");
 
@@ -189,7 +189,7 @@ export async function addRecommendationToPlayPlanAction(formData: FormData) {
 }
 
 export async function updatePlayPlanSettingsAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const planId = text(formData, "planId");
   const plan = await prisma.dailyPlayPlan.findFirst({ where: { id: planId, userId: user.id } });
   if (!plan) redirect("/play-plan?error=missing");
@@ -232,7 +232,7 @@ export async function updatePlayPlanSettingsAction(formData: FormData) {
 }
 
 export async function updatePlayPlanItemAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const itemId = text(formData, "itemId");
   const item = await prisma.dailyPlayPlanItem.findFirst({
     where: { id: itemId, plan: { userId: user.id } },
@@ -277,7 +277,7 @@ export async function updatePlayPlanItemAction(formData: FormData) {
 }
 
 export async function removePlayPlanItemAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const itemId = text(formData, "itemId");
   const item = await prisma.dailyPlayPlanItem.findFirst({
     where: { id: itemId, plan: { userId: user.id } },
@@ -306,7 +306,7 @@ export async function removePlayPlanItemAction(formData: FormData) {
 }
 
 export async function approvePlayPlanAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const planId = text(formData, "planId");
   const current = await prisma.dailyPlayPlan.findFirst({ where: { id: planId, userId: user.id } });
   if (!current) redirect("/play-plan?error=missing");
@@ -345,7 +345,7 @@ export async function approvePlayPlanAction(formData: FormData) {
 }
 
 export async function reopenPlayPlanAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const planId = text(formData, "planId");
   const plan = await prisma.dailyPlayPlan.findFirst({
     where: { id: planId, userId: user.id },
@@ -372,7 +372,7 @@ export async function reopenPlayPlanAction(formData: FormData) {
 }
 
 export async function archivePlayPlanAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const planId = text(formData, "planId");
   const plan = await prisma.dailyPlayPlan.findFirst({ where: { id: planId, userId: user.id } });
   if (!plan) redirect("/play-plan?error=missing");
@@ -390,7 +390,7 @@ export async function archivePlayPlanAction(formData: FormData) {
 }
 
 export async function markPlayPlanItemPlayedAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const itemId = text(formData, "itemId");
   const item = await prisma.dailyPlayPlanItem.findFirst({
     where: { id: itemId, plan: { userId: user.id } },

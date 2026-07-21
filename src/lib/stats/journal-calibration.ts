@@ -1,4 +1,4 @@
-import { selectionProfit } from "@/lib/stats/analysis-journal";
+import { summarizeBettingFinancials } from "@/lib/stats/betting-metrics";
 
 export type CalibrationEntry = {
   status: string;
@@ -123,19 +123,14 @@ export function summarizeCalibration(entries: CalibrationEntry[]): CalibrationMe
   });
 
   const settledFinancial = snapshotEntries.filter((entry) => entry.status === "SETTLED");
-  const financialRows = settledFinancial.flatMap((entry) => {
-    const profit = selectionProfit({
+  const financial = summarizeBettingFinancials({
+    entries: settledFinancial,
+    financialInput: (entry) => ({
       result: entry.result as "WIN" | "LOSS" | "PUSH" | "VOID" | null,
       odds: entry.odds,
       stake: entry.stake,
-    });
-    return profit === null ? [] : [{ entry, profit }];
+    }),
   });
-  const turnover = financialRows.reduce((sum, row) => {
-    const stake = finiteNumber(row.entry.stake);
-    return stake !== null && stake > 0 ? sum + stake : sum;
-  }, 0);
-  const profit = financialRows.reduce((sum, row) => sum + row.profit, 0);
 
   return {
     totalEntries: entries.length,
@@ -166,10 +161,10 @@ export function summarizeCalibration(entries: CalibrationEntry[]): CalibrationMe
         return expectedValue === null ? [] : [expectedValue];
       }),
     ),
-    financialEntries: financialRows.length,
-    turnover,
-    profit,
-    roi: turnover > 0 ? (profit / turnover) * 100 : null,
+    financialEntries: financial.financialEntries,
+    turnover: financial.turnover,
+    profit: financial.profit,
+    roi: financial.roi,
   };
 }
 

@@ -16,6 +16,7 @@ import {
   toggleTeamAction,
 } from "@/lib/actions/catalog-actions";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 
 const messages: Record<string, string> = {
@@ -31,7 +32,7 @@ export default async function SettingsPage({
   searchParams: Promise<{ ok?: string }>;
 }) {
   const user = await requireUser();
-  if (user.role !== "ADMIN") redirect("/");
+  if (!canAdminister(user.role)) redirect("/");
   const params = await searchParams;
 
   const [leagues, seasons, teams, referees] = await Promise.all([

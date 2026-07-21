@@ -15,7 +15,7 @@ import {
   type ApiFootballFixture,
   type ApiFootballTeam,
 } from "@/lib/api-football/provider";
-import { requireUser } from "@/lib/auth";
+import { requireAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { normalizeLookup } from "@/lib/imports/csv";
 import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
@@ -29,8 +29,7 @@ function text(formData: FormData, key: string) {
 }
 
 async function requireAdmin() {
-  const user = await requireUser();
-  if (user.role !== "ADMIN") throw new Error("Brak uprawnień administratora.");
+  const user = await requireAdminUser();
   return user;
 }
 

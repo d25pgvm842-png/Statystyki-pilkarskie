@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { loadStrategyPortfolio } from "@/lib/data/strategy-portfolio";
 import { selectionClv, selectionProfit } from "@/lib/stats/analysis-journal";
 import { strategyRuleSummary, strategyStabilityLabel } from "@/lib/stats/strategy-lab";
+import { BETTING_METRICS_VERSION } from "@/lib/stats/betting-metrics";
 
 function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
     ["strategia", version.strategy.name],
     ["wersja", version.version],
     ["status", version.status],
+    ["wersja_metryk", BETTING_METRICS_VERSION],
     ["aktywowano", version.activatedAt.toISOString()],
     ["zakonczono", version.endedAt?.toISOString() ?? null],
     ["regula", strategyRuleSummary(config)],

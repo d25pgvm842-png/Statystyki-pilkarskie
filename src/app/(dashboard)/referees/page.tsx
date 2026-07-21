@@ -4,7 +4,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
-import { calculateRefereeSummary } from "@/lib/stats/match-analytics";
+import { calculateRefereeSummary, completePairTotal } from "@/lib/stats/match-analytics";
 import { prisma } from "@/lib/db";
 import { formatNumber } from "@/lib/utils";
 
@@ -87,7 +87,12 @@ export default async function RefereesPage({ searchParams }: { searchParams: Pro
                     {referee.matches.slice(0, 5).map((match) => (
                       <Link key={match.id} href={`/matches/${match.id}`} className="flex flex-wrap justify-between gap-3 rounded-lg bg-zinc-50 p-3 text-sm transition hover:bg-zinc-100 dark:bg-zinc-950 dark:hover:bg-zinc-800">
                         <span>{match.homeTeam.name} – {match.awayTeam.name}</span>
-                        <span className="font-medium">{match.stats ? `${(match.stats.homeYellowCards ?? 0) + (match.stats.awayYellowCards ?? 0)} żk · ${(match.stats.homeFouls ?? 0) + (match.stats.awayFouls ?? 0)} fauli` : "brak danych"}</span>
+                        <span className="font-medium">{(() => {
+                          const yellow = completePairTotal(match.stats?.homeYellowCards, match.stats?.awayYellowCards);
+                          const fouls = completePairTotal(match.stats?.homeFouls, match.stats?.awayFouls);
+                          if (yellow === null && fouls === null) return "brak danych";
+                          return `${yellow === null ? "— żk" : `${yellow} żk`} · ${fouls === null ? "— fauli" : `${fouls} fauli`}`;
+                        })()}</span>
                       </Link>
                     ))}
                     {!referee.matches.length ? <span className="text-sm text-zinc-500">Brak zakończonych meczów.</span> : null}

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuditEntityType } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
 import { valueToString } from "@/lib/utils";
@@ -240,7 +240,7 @@ function copyData(current: {
 }
 
 export async function createAnalysisStrategyAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const returnTo = safeReturnTo(formData);
   const data = await validatedStrategyInput(formData, returnTo);
 
@@ -278,7 +278,7 @@ export async function createAnalysisStrategyAction(formData: FormData) {
 }
 
 export async function updateAnalysisStrategyAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = String(formData.get("id") ?? "").trim();
   const returnTo = safeReturnTo(formData);
   if (!id) redirect(appendResult(returnTo, "error", "missing"));
@@ -340,7 +340,7 @@ export async function updateAnalysisStrategyAction(formData: FormData) {
 }
 
 export async function toggleAnalysisStrategyAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = String(formData.get("id") ?? "").trim();
   if (!id) redirect("/strategies?error=missing");
   const current = await prisma.analysisStrategy.findFirst({ where: { id, userId: user.id } });
@@ -374,7 +374,7 @@ export async function toggleAnalysisStrategyAction(formData: FormData) {
 }
 
 export async function duplicateAnalysisStrategyAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const id = String(formData.get("id") ?? "").trim();
   if (!id) redirect("/strategies?error=missing");
   const current = await prisma.analysisStrategy.findFirst({ where: { id, userId: user.id } });

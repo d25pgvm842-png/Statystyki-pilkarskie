@@ -492,6 +492,8 @@ export default async function JournalPage({
                       <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-800">{item.statLabel}</span>
                       <span className="rounded-full bg-zinc-100 px-2.5 py-1 font-semibold dark:bg-zinc-800">{item.side} {item.threshold}</span>
                       <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(item.status)}`}>{statusLabels[item.status] ?? item.status}</span>
+                      {item.decisionTiming === "LATE" ? <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">LATE · po kickoffie</span> : null}
+                      {item.decisionTiming === "UNKNOWN" ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">Nieznany czas decyzji</span> : null}
                       {item.result ? <span className={`rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold dark:bg-zinc-800 ${resultClass(item.result)}`}>{resultLabels[item.result] ?? item.result}</span> : null}
                     </div>
                   </div>
@@ -505,7 +507,7 @@ export default async function JournalPage({
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Projekcja</div><div className="mt-1 text-xl font-semibold">{formatNumber(item.projection)}</div></div>
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Przewaga</div><div className="mt-1 text-xl font-semibold">{formatNumber(item.edge)}</div></div>
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Próba H/A</div><div className="mt-1 text-xl font-semibold">{item.homeSample ?? "—"}/{item.awaySample ?? "—"}</div></div>
-                  <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Backtest kierunku</div><div className="mt-1 text-xl font-semibold">{percent(item.backtestHitRate)}</div><div className="text-xs text-zinc-500">n={item.backtestSignals ?? 0}</div></div>
+                  <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Backtest kierunku</div><div className="mt-1 text-xl font-semibold">{percent(item.backtestHitRate)}</div><div className="text-xs text-zinc-500">n={item.backtestSignals ?? "—"}</div></div>
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Wynik finansowy</div><div className={`mt-1 text-xl font-semibold ${profit !== null && profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{currency(profit)}</div></div>
                   <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">CLV</div><div className="mt-1 text-xl font-semibold">{percent(clv)}</div></div>
                 </div>
@@ -521,7 +523,7 @@ export default async function JournalPage({
                       <div><div className="text-xs text-zinc-500">Fair odds</div><div className="font-semibold">{formatNumber(item.fairOdds, 2)}</div></div>
                       <div><div className="text-xs text-zinc-500">Rynek no-vig</div><div className="font-semibold">{percent(item.marketProbability)}</div></div>
                       <div><div className="text-xs text-zinc-500">EV</div><div className={`font-semibold ${item.expectedValue !== null && item.expectedValue >= 0 ? "text-emerald-600" : "text-red-600"}`}>{percent(item.expectedValue)}</div></div>
-                      <div><div className="text-xs text-zinc-500">Próba / pokrycie</div><div className="font-semibold">n={item.modelSample ?? 0} · {percent(item.modelCoverage)}</div></div>
+                      <div><div className="text-xs text-zinc-500">Próba / pokrycie</div><div className="font-semibold">n={item.modelSample ?? "—"} · {percent(item.modelCoverage)}</div></div>
                       <div><div className="text-xs text-zinc-500">Status</div><div className="font-semibold">{item.marketStatus ? marketWorkshopStatusLabel(item.marketStatus as MarketWorkshopStatus) : "—"}</div></div>
                     </div>
                     <div className="mt-2 text-xs text-zinc-500">

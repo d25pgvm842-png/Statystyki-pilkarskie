@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAdminUser } from "@/lib/auth";
 
 function slugify(value: string) {
   return value
@@ -16,8 +16,7 @@ function slugify(value: string) {
 }
 
 async function requireAdmin() {
-  const user = await requireUser();
-  if (user.role !== "ADMIN") throw new Error("Brak uprawnień administratora.");
+  const user = await requireAdminUser();
   return user;
 }
 

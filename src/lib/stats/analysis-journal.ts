@@ -1,5 +1,11 @@
+import {
+  bettingFinancialContribution,
+  summarizeBettingFinancials,
+  type BettingResult,
+} from "@/lib/stats/betting-metrics";
+
 export type JournalSide = "OVER" | "UNDER";
-export type JournalResult = "WIN" | "LOSS" | "PUSH" | "VOID";
+export type JournalResult = BettingResult;
 
 export type JournalMetricEntry = {
   status: string;
@@ -99,24 +105,7 @@ export function selectionProfit(input: {
   odds: number | null;
   stake: number | null;
 }) {
-  if (
-    !input.result
-    || input.stake === null
-    || !Number.isFinite(input.stake)
-    || input.stake <= 0
-  ) {
-    return null;
-  }
-  if (
-    input.odds === null
-    || !Number.isFinite(input.odds)
-    || input.odds <= 1
-  ) {
-    return null;
-  }
-  if (input.result === "LOSS") return -input.stake;
-  if (input.result === "PUSH" || input.result === "VOID") return 0;
-  return Math.round(input.stake * (input.odds - 1) * 100) / 100;
+  return bettingFinancialContribution(input)?.profit ?? null;
 }
 
 export function selectionClv(input: {
@@ -149,18 +138,10 @@ export function summarizeJournal(entries: JournalMetricEntry[]): JournalMetrics 
   const losses = settledEntries.filter((entry) => entry.result === "LOSS").length;
   const pushes = settledEntries.filter((entry) => entry.result === "PUSH").length;
 
-  const financialRows = settledEntries.flatMap((entry) => {
-    const profit = selectionProfit(entry);
-    return profit === null ? [] : [{ entry, profit }];
+  const financial = summarizeBettingFinancials({
+    entries: settledEntries,
+    financialInput: (entry) => entry,
   });
-  const financialEntries = financialRows.length;
-  const turnover = financialRows.reduce((sum, row) => {
-    const stake = row.entry.stake;
-    return stake !== null && Number.isFinite(stake) && stake > 0
-      ? sum + stake
-      : sum;
-  }, 0);
-  const profit = financialRows.reduce((sum, row) => sum + row.profit, 0);
   const odds = settledEntries
     .map((entry) => entry.odds)
     .filter((value): value is number =>
@@ -180,12 +161,12 @@ export function summarizeJournal(entries: JournalMetricEntry[]): JournalMetrics 
     losses,
     pushes,
     hitRate: wins + losses ? (wins / (wins + losses)) * 100 : null,
-    turnover,
-    profit,
-    roi: turnover > 0 ? (profit / turnover) * 100 : null,
+    turnover: financial.turnover,
+    profit: financial.profit,
+    roi: financial.roi,
     averageOdds: average(odds),
     averageClv: average(clv),
-    financialEntries,
+    financialEntries: financial.financialEntries,
   };
 }
 

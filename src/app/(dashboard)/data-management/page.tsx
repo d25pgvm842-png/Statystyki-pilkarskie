@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Archive, DatabaseBackup, Download, FileSpreadsheet, ShieldCheck, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 
 function formatDate(value: Date | null) {
@@ -15,7 +16,7 @@ function deletionLabel(changes: { fieldName: string; newValue: string | null }[]
 
 export default async function DataManagementPage() {
   const user = await requireUser();
-  if (user.role !== "ADMIN") redirect("/");
+  if (!canAdminister(user.role)) redirect("/");
 
   const [
     matchesCount,

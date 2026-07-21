@@ -10,7 +10,7 @@ import {
   ImportStatus,
   MatchStatus,
 } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   normalizeLookup,
@@ -207,7 +207,7 @@ function auditValues(data: StoredImportRow, batchId: string, rowId: string, file
 }
 
 export async function uploadCsvImportAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const seasonId = String(formData.get("seasonId") ?? "").trim();
   const file = formData.get("file");
 
@@ -385,7 +385,7 @@ export async function uploadCsvImportAction(formData: FormData) {
 }
 
 export async function toggleImportRowAction(formData: FormData) {
-  await requireUser();
+  await requireWriteUser();
   const batchId = String(formData.get("batchId") ?? "").trim();
   const rowId = String(formData.get("rowId") ?? "").trim();
   const target = String(formData.get("target") ?? "").trim();
@@ -463,7 +463,7 @@ export async function toggleImportRowAction(formData: FormData) {
 }
 
 export async function cancelCsvImportAction(formData: FormData) {
-  await requireUser();
+  await requireWriteUser();
   const batchId = String(formData.get("batchId") ?? "").trim();
   if (!batchId) redirect("/imports");
 
@@ -871,7 +871,7 @@ async function processCsvImportChunk(input: {
 }
 
 export async function commitCsvImportChunkAction(batchId: string): Promise<ImportChunkResult> {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   return processCsvImportChunk({ userId: user.id, batchId });
 }
 

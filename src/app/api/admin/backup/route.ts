@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { exportFileDate } from "@/lib/backup/csv";
 import { listExternalMappings } from "@/lib/external-mappings";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user?.active) return Response.json({ error: "Brak autoryzacji." }, { status: 401 });
-  if (user.role !== "ADMIN") return Response.json({ error: "Brak uprawnień administratora." }, { status: 403 });
+  if (!canAdminister(user.role)) return Response.json({ error: "Brak uprawnień administratora." }, { status: 403 });
 
   const [
     users,

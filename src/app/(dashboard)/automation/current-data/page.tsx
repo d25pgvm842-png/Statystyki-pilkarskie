@@ -3,6 +3,7 @@ import { Clock3, CloudDownload, Database, ShieldCheck } from "lucide-react";
 import { CurrentSyncRunner } from "@/components/public-data/current-sync-runner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import {
   FOOTBALL_DATA_ORG_PROVIDER_CODE,
@@ -16,7 +17,7 @@ function dateInput(date: Date) {
 
 export default async function CurrentDataPage() {
   const user = await requireUser();
-  if (user.role !== "ADMIN") {
+  if (!canAdminister(user.role)) {
     return (
       <Card className="p-6">
         <div className="flex items-center gap-3 text-amber-700 dark:text-amber-300">

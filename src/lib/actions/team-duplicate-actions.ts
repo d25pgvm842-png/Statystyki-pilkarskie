@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuditEntityType, ExternalEntityType } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { requireUser } from "@/lib/auth";
+import { requireAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 type TransactionClient = Prisma.TransactionClient;
@@ -36,8 +36,7 @@ function matchKey(input: {
 }
 
 export async function mergeDuplicateTeamAction(formData: FormData) {
-  const user = await requireUser();
-  if (user.role !== "ADMIN") throw new Error("Brak uprawnień administratora.");
+  const user = await requireAdminUser();
 
   const sourceTeamId = text(formData, "sourceTeamId");
   const targetTeamId = text(formData, "targetTeamId");

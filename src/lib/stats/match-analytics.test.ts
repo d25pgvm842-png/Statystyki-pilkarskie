@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateMatchSummary, calculateRefereeSummary } from "./match-analytics";
+import { calculateMatchSummary, calculateRefereeSummary, completePairTotal } from "./match-analytics";
 
 test("liczy średnie sum meczowych wyłącznie z kompletnych par", () => {
   const summary = calculateMatchSummary([
@@ -30,4 +30,12 @@ test("liczy skuteczność linii kartek sędziego", () => {
   assert.ok(Math.abs((summary.yellowCardLines[0].hitRate ?? 0) - 200 / 3) < 1e-9);
   assert.ok(Math.abs((summary.yellowCardLines[1].hitRate ?? 0) - 100 / 3) < 1e-9);
   assert.ok(Math.abs((summary.yellowCardLines[2].hitRate ?? 0) - 100 / 3) < 1e-9);
+});
+
+
+test("suma pary pozostaje brakiem, gdy brakuje jednej strony", () => {
+  assert.equal(completePairTotal(null, 5), null);
+  assert.equal(completePairTotal(0, 5), 5);
+  assert.equal(completePairTotal(null, null), null);
+  assert.equal(completePairTotal(0, 0), 0);
 });

@@ -43,6 +43,7 @@ import {
 } from "@/components/layout/app-navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { canWrite } from "@/lib/permissions";
 
 const SIDEBAR_STORAGE_KEY = "staty-sidebar-collapsed";
 const SIDEBAR_EVENT = "staty-sidebar-change";
@@ -151,6 +152,7 @@ export function AppShell({
   const title = pageTitleForPath(pathname, groups);
   const collapsed = useSyncExternalStore(subscribeSidebar, getSidebarSnapshot, getSidebarServerSnapshot);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const writable = canWrite(user.role);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -172,7 +174,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className={cn("min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50", !writable && "viewer-read-only")}>
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-zinc-200 bg-white transition-[width] duration-200 lg:flex dark:border-zinc-800 dark:bg-zinc-900",
@@ -231,7 +233,7 @@ export function AppShell({
                 <div className="font-medium">{user.name}</div>
                 <div className="text-xs text-zinc-500">{user.role}</div>
               </div>
-              <form action={logoutAction}>
+              <form action={logoutAction} data-viewer-allowed>
                 <Button type="submit" variant="secondary" className="w-full">
                   <LogOut size={17} className="mr-2" />Wyloguj
                 </Button>
@@ -257,18 +259,22 @@ export function AppShell({
             <div className="min-w-0 flex-1">
               <div className="truncate text-base font-semibold sm:text-lg">{title}</div>
             </div>
-            <Link href="/matches/new">
-              <Button size="sm" aria-label="Dodaj mecz">
-                <PlusCircle size={16} className="sm:mr-2" />
-                <span className="hidden sm:inline">Dodaj mecz</span>
-              </Button>
-            </Link>
+            {writable ? (
+              <Link href="/matches/new" data-requires-write>
+                <Button size="sm" aria-label="Dodaj mecz">
+                  <PlusCircle size={16} className="sm:mr-2" />
+                  <span className="hidden sm:inline">Dodaj mecz</span>
+                </Button>
+              </Link>
+            ) : (
+              <span className="hidden rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500 sm:inline dark:border-zinc-700">Tylko odczyt</span>
+            )}
             <ThemeToggle />
             <div className="hidden text-right text-xs xl:block">
               <div className="max-w-40 truncate font-medium">{user.name}</div>
               <div className="text-zinc-500">{user.role}</div>
             </div>
-            <form action={logoutAction} className="hidden lg:block">
+            <form action={logoutAction} className="hidden lg:block" data-viewer-allowed>
               <Button variant="ghost" size="sm" aria-label="Wyloguj"><LogOut size={17} /></Button>
             </form>
           </div>

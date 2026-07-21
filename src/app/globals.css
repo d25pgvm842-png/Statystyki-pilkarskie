@@ -18,3 +18,8 @@ body { margin: 0; background: var(--background); color: var(--foreground); font-
 button, input, select, textarea { font: inherit; }
 a { color: inherit; text-decoration: none; }
 .dark { --background: #09090b; --foreground: #fafafa; }
+
+
+/* VIEWER pozostaje w aplikacji w trybie bezwzględnie tylko do odczytu. */
+.viewer-read-only [data-requires-write] { display: none !important; }
+.viewer-read-only form[method="post"]:not([data-viewer-allowed]) button[type="submit"] { display: none !important; }

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { MatchStatus } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
 import { buildHistoricalSeasonPreview } from "@/lib/imports/historical-season-preview";
@@ -174,8 +174,7 @@ function publicErrorHref(
 }
 
 async function requireAdmin() {
-  const user = await requireUser();
-  if (user.role !== "ADMIN") throw new Error("Brak uprawnień administratora.");
+  const user = await requireAdminUser();
   return user;
 }
 

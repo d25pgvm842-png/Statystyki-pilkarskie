@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuditEntityType } from "@/generated/prisma/enums";
-import { requireUser } from "@/lib/auth";
+import { requireWriteUser } from "@/lib/auth";
 import { evaluateAndPersistStrategyHealth } from "@/lib/data/strategy-monitoring";
 import { prisma } from "@/lib/db";
 import { valueToString } from "@/lib/utils";
@@ -32,7 +32,7 @@ function revalidateMonitoringPaths() {
 }
 
 export async function refreshStrategyHealthAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const versionId = text(formData, "versionId");
   if (!versionId) redirect("/monitoring?error=missing");
 
@@ -52,7 +52,7 @@ export async function refreshStrategyHealthAction(formData: FormData) {
 }
 
 export async function refreshAllStrategyHealthAction() {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const result = await evaluateAndPersistStrategyHealth({
     userId: user.id,
     source: "MANUAL",
@@ -62,7 +62,7 @@ export async function refreshAllStrategyHealthAction() {
 }
 
 export async function updateStrategyMonitoringSettingsAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireWriteUser();
   const versionId = text(formData, "versionId");
   if (!versionId) redirect("/monitoring?error=missing");
 

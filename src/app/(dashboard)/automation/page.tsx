@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/api-sync-actions";
 import { API_FOOTBALL_LEAGUE_IDS, API_FOOTBALL_PROVIDER_CODE } from "@/lib/api-football/provider";
 import { requireUser } from "@/lib/auth";
+import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import { listExternalMappings } from "@/lib/external-mappings";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +55,7 @@ export default async function AutomationPage({
   }>;
 }) {
   const user = await requireUser();
-  if (user.role !== "ADMIN") {
+  if (!canAdminister(user.role)) {
     return (
       <Card className="p-6">
         <div className="flex items-center gap-3 text-amber-700 dark:text-amber-300">

@@ -71,6 +71,8 @@ function strategyEntryFromPick(pick: Awaited<ReturnType<typeof loadPick>>) {
     kickoffAt: pick.match.kickoffAt,
     createdAt: pick.createdAt,
     quoteCapturedAt: pick.quoteCapturedAt,
+    decisionAt: pick.decisionAt,
+    decisionTiming: pick.decisionTiming,
     leagueId: pick.match.season.league.id,
     leagueName: pick.match.season.league.name,
     seasonId: pick.match.season.id,
@@ -135,8 +137,9 @@ export async function captureForwardSignalsForPick(
   const pick = await loadPick(tx, input.pickId, input.userId);
   if (!pick) return 0;
 
-  const decisionAt = pick.placedAt ?? pick.quoteCapturedAt ?? pick.createdAt;
+  const decisionAt = pick.decisionAt;
   const capturedAt = new Date();
+  if (pick.decisionTiming !== "PRE_MATCH") return 0;
   if (decisionAt.getTime() >= pick.match.kickoffAt.getTime()) return 0;
   if (capturedAt.getTime() >= pick.match.kickoffAt.getTime()) return 0;
 
