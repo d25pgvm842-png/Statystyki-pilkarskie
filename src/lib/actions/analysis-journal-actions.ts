@@ -13,6 +13,7 @@ import {
 } from "@/generated/prisma/enums";
 import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { lockTransactionResource } from "@/lib/transaction-locks";
 import {
   captureForwardSignalsForPick,
   syncForwardSignalsForPick,
@@ -224,107 +225,109 @@ export async function updateAnalysisPickAction(formData: FormData) {
   const user = await requireWriteUser();
   const id = text(formData, "id");
   const returnTo = safeReturnPath(formData);
-  const existing = await prisma.analysisPick.findFirst({
-    where: { id, userId: user.id },
-  });
-  if (!existing) redirect(appendResult(returnTo, "error", "pick"));
-
   const status = analysisPickStatus(text(formData, "status"));
-  if (status === AnalysisPickStatus.SETTLED && existing.result === null) {
-    throw new Error("Najpierw rozlicz pozycję automatycznie lub ręcznie.");
-  }
-
   const bookmaker = optionalText(formData, "bookmaker", 120);
   const note = optionalText(formData, "note", 2000);
   const odds = optionalNumber(formData, "odds", 1.01, 1000);
   const closingOdds = optionalNumber(formData, "closingOdds", 1.01, 1000);
   const stake = optionalNumber(formData, "stake", 0.01, 10000000);
 
-  let result = existing.result;
-  let actualValue = existing.actualValue;
-  let settledAt = existing.settledAt;
-  let placedAt = existing.placedAt;
+  let found = true;
+  await prisma.$transaction(async (tx) => {
+    await lockTransactionResource(tx, "analysis-pick", id);
+    const existing = await tx.analysisPick.findFirst({ where: { id, userId: user.id } });
+    if (!existing) {
+      found = false;
+      return;
+    }
+    if (status === AnalysisPickStatus.SETTLED && existing.result === null) {
+      throw new Error("Najpierw rozlicz pozycję automatycznie lub ręcznie.");
+    }
 
-  if (status === AnalysisPickStatus.PLAYED) {
-    placedAt = placedAt ?? new Date();
-    result = null;
-    actualValue = null;
-    settledAt = null;
-  } else if (
-    status === AnalysisPickStatus.WATCHING
-    || status === AnalysisPickStatus.REJECTED
-  ) {
-    result = null;
-    actualValue = null;
-    settledAt = null;
-  } else if (status === AnalysisPickStatus.VOID) {
-    result = AnalysisPickResult.VOID;
-    settledAt = new Date();
-  }
+    let result = existing.result;
+    let actualValue = existing.actualValue;
+    let settledAt = existing.settledAt;
+    let placedAt = existing.placedAt;
 
-  const next = {
-    status,
-    bookmaker,
-    note,
-    odds,
-    closingOdds,
-    stake,
-    result,
-    actualValue,
-    placedAt,
-    settledAt,
-  };
-  const changes = auditChanges(existing, next);
+    if (status === AnalysisPickStatus.PLAYED) {
+      placedAt = placedAt ?? new Date();
+      result = null;
+      actualValue = null;
+      settledAt = null;
+    } else if (status === AnalysisPickStatus.WATCHING || status === AnalysisPickStatus.REJECTED) {
+      result = null;
+      actualValue = null;
+      settledAt = null;
+    } else if (status === AnalysisPickStatus.VOID) {
+      result = AnalysisPickResult.VOID;
+      settledAt = new Date();
+    }
 
-  if (changes.length) {
-    await prisma.$transaction(async (tx) => {
-      await tx.analysisPick.update({
-        where: { id },
-        data: next,
-      });
-      await tx.auditLog.create({
-        data: {
-          entityType: AuditEntityType.ANALYSIS_PICK,
-          entityId: id,
-          action: "UPDATE_ANALYSIS_PICK",
-          userId: user.id,
-          changes: { create: changes },
-        },
-      });
-      await syncForwardSignalsForPick(tx, { pickId: id, userId: user.id });
+    const next = {
+      status,
+      bookmaker,
+      note,
+      odds,
+      closingOdds,
+      stake,
+      result,
+      actualValue,
+      placedAt,
+      settledAt,
+    };
+    const changes = auditChanges(existing, next);
+    if (!changes.length) return;
+
+    await tx.analysisPick.update({ where: { id }, data: next });
+    await tx.auditLog.create({
+      data: {
+        entityType: AuditEntityType.ANALYSIS_PICK,
+        entityId: id,
+        action: "UPDATE_ANALYSIS_PICK",
+        userId: user.id,
+        changes: { create: changes },
+      },
     });
-  }
+    await syncForwardSignalsForPick(tx, { pickId: id, userId: user.id });
+  });
 
+  if (!found) redirect(appendResult(returnTo, "error", "pick"));
   revalidatePath("/journal");
   revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "updated"));
 }
 
+
 export async function settleAnalysisPickManuallyAction(formData: FormData) {
   const user = await requireWriteUser();
   const id = text(formData, "id");
   const returnTo = safeReturnPath(formData);
-  const existing = await prisma.analysisPick.findFirst({
-    where: { id, userId: user.id },
-  });
-  if (!existing) redirect(appendResult(returnTo, "error", "pick"));
-
   const result = analysisPickResult(text(formData, "result"));
   const actualValue = result === AnalysisPickResult.VOID
     ? optionalNumber(formData, "actualValue", 0, 500)
     : requiredNumber(formData, "actualValue", 0, 500);
-  const next = {
-    status: result === AnalysisPickResult.VOID
-      ? AnalysisPickStatus.VOID
-      : AnalysisPickStatus.SETTLED,
-    result,
-    actualValue,
-    settledAt: new Date(),
-    placedAt: existing.placedAt ?? new Date(),
-  };
-  const changes = auditChanges(existing, next);
 
+  let found = true;
   await prisma.$transaction(async (tx) => {
+    await lockTransactionResource(tx, "analysis-pick", id);
+    const existing = await tx.analysisPick.findFirst({ where: { id, userId: user.id } });
+    if (!existing) {
+      found = false;
+      return;
+    }
+
+    const next = {
+      status: result === AnalysisPickResult.VOID
+        ? AnalysisPickStatus.VOID
+        : AnalysisPickStatus.SETTLED,
+      result,
+      actualValue,
+      settledAt: new Date(),
+      placedAt: existing.placedAt ?? new Date(),
+    };
+    const changes = auditChanges(existing, next);
+    if (!changes.length) return;
+
     await tx.analysisPick.update({ where: { id }, data: next });
     await tx.auditLog.create({
       data: {
@@ -338,100 +341,117 @@ export async function settleAnalysisPickManuallyAction(formData: FormData) {
     await syncForwardSignalsForPick(tx, { pickId: id, userId: user.id });
   });
 
+  if (!found) redirect(appendResult(returnTo, "error", "pick"));
   revalidatePath("/journal");
   revalidatePath("/portfolio");
   redirect(appendResult(returnTo, "settled", "1"));
 }
 
+
 export async function settleFinishedAnalysisPicksAction(formData: FormData) {
   const user = await requireWriteUser();
   const returnTo = safeReturnPath(formData);
-  const items = await prisma.analysisPick.findMany({
+  const candidates = await prisma.analysisPick.findMany({
     where: {
       userId: user.id,
       status: AnalysisPickStatus.PLAYED,
       match: { status: MatchStatus.FINISHED },
     },
-    include: {
-      match: { include: { stats: true } },
-    },
+    select: { id: true },
   });
 
-  const ready = items.flatMap((item) => {
-    const definition = trendDefinition(item.statKey as TrendStatKey);
-    const stats = item.match.stats;
-    if (!definition || !stats) return [];
-    const home = stats[definition.home];
-    const away = stats[definition.away];
+  let settled = 0;
+  for (const candidate of candidates) {
+    const didSettle = await prisma.$transaction(async (tx) => {
+      await lockTransactionResource(tx, "analysis-pick", candidate.id);
+      const item = await tx.analysisPick.findFirst({
+        where: {
+          id: candidate.id,
+          userId: user.id,
+          status: AnalysisPickStatus.PLAYED,
+          match: { status: MatchStatus.FINISHED },
+        },
+        include: { match: { include: { stats: true } } },
+      });
+      if (!item) return false;
 
-    let actualValue: number | null = null;
-    if (item.scope === LineScope.MATCH_TOTAL) {
-      if (typeof home === "number" && typeof away === "number") actualValue = home + away;
-    } else if (item.selectedTeamId) {
-      const selectedValue = item.match.homeTeamId === item.selectedTeamId ? home
-        : item.match.awayTeamId === item.selectedTeamId ? away
-          : null;
-      const opponentValue = item.match.homeTeamId === item.selectedTeamId ? away
-        : item.match.awayTeamId === item.selectedTeamId ? home
-          : null;
-      const value = item.scope === LineScope.TEAM_FOR ? selectedValue : opponentValue;
-      if (typeof value === "number") actualValue = value;
-    }
-    if (actualValue === null) return [];
+      const definition = trendDefinition(item.statKey as TrendStatKey);
+      const stats = item.match.stats;
+      if (!definition || !stats) return false;
+      const home = stats[definition.home];
+      const away = stats[definition.away];
 
-    const result = settleTotalSelection({
-      actual: actualValue,
-      threshold: item.threshold,
-      side: item.side,
-    });
-    return [{ item, actualValue, result }];
-  });
-
-  if (ready.length) {
-    await prisma.$transaction(async (tx) => {
-      for (const row of ready) {
-        await tx.analysisPick.update({
-          where: { id: row.item.id },
-          data: {
-            status: AnalysisPickStatus.SETTLED,
-            result: row.result,
-            actualValue: row.actualValue,
-            settledAt: new Date(),
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            entityType: AuditEntityType.ANALYSIS_PICK,
-            entityId: row.item.id,
-            action: "AUTO_SETTLE_ANALYSIS_PICK",
-            userId: user.id,
-            changes: {
-              create: [
-                {
-                  fieldName: "status",
-                  oldValue: row.item.status,
-                  newValue: AnalysisPickStatus.SETTLED,
-                },
-                {
-                  fieldName: "result",
-                  oldValue: valueToString(row.item.result),
-                  newValue: row.result,
-                },
-                {
-                  fieldName: "actualValue",
-                  oldValue: valueToString(row.item.actualValue),
-                  newValue: String(row.actualValue),
-                },
-              ],
-            },
-          },
-        });
-        await syncForwardSignalsForPick(tx, { pickId: row.item.id, userId: user.id });
+      let actualValue: number | null = null;
+      if (item.scope === LineScope.MATCH_TOTAL) {
+        if (typeof home === "number" && typeof away === "number") actualValue = home + away;
+      } else if (item.selectedTeamId) {
+        const selectedValue = item.match.homeTeamId === item.selectedTeamId ? home
+          : item.match.awayTeamId === item.selectedTeamId ? away
+            : null;
+        const opponentValue = item.match.homeTeamId === item.selectedTeamId ? away
+          : item.match.awayTeamId === item.selectedTeamId ? home
+            : null;
+        const value = item.scope === LineScope.TEAM_FOR ? selectedValue : opponentValue;
+        if (typeof value === "number") actualValue = value;
       }
+      if (actualValue === null) return false;
+
+      const result = settleTotalSelection({
+        actual: actualValue,
+        threshold: item.threshold,
+        side: item.side,
+      });
+      const settledAt = new Date();
+      const claimed = await tx.analysisPick.updateMany({
+        where: { id: item.id, userId: user.id, status: AnalysisPickStatus.PLAYED },
+        data: {
+          status: AnalysisPickStatus.SETTLED,
+          result,
+          actualValue,
+          settledAt,
+        },
+      });
+      if (claimed.count !== 1) return false;
+
+      await tx.auditLog.create({
+        data: {
+          entityType: AuditEntityType.ANALYSIS_PICK,
+          entityId: item.id,
+          action: "AUTO_SETTLE_ANALYSIS_PICK",
+          userId: user.id,
+          changes: {
+            create: [
+              {
+                fieldName: "status",
+                oldValue: item.status,
+                newValue: AnalysisPickStatus.SETTLED,
+              },
+              {
+                fieldName: "result",
+                oldValue: valueToString(item.result),
+                newValue: result,
+              },
+              {
+                fieldName: "actualValue",
+                oldValue: valueToString(item.actualValue),
+                newValue: String(actualValue),
+              },
+              {
+                fieldName: "settledAt",
+                oldValue: valueToString(item.settledAt),
+                newValue: settledAt.toISOString(),
+              },
+            ],
+          },
+        },
+      });
+      await syncForwardSignalsForPick(tx, { pickId: item.id, userId: user.id });
+      return true;
     });
+    if (didSettle) settled += 1;
   }
 
   revalidatePath("/journal");
   revalidatePath("/portfolio");
-  redirect(appendResult(returnTo, "settled", String(ready.length)));
+  redirect(appendResult(returnTo, "settled", String(settled)));
 }

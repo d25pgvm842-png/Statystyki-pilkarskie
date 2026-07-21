@@ -10,9 +10,15 @@ const securityHeaders = [
   },
 ];
 
+const buildCpus = Number(process.env.NEXT_BUILD_CPUS ?? "0");
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  experimental: buildCpus > 0 ? { cpus: buildCpus } : undefined,
+  typescript: {
+    ignoreBuildErrors: process.env.NEXT_SKIP_BUILD_TYPECHECK === "1",
+  },
   async headers() {
     return [
       {

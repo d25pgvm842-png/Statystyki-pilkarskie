@@ -1,6 +1,6 @@
 {
   "name": "staty-pilkarskie",
-  "version": "0.29.2",
+  "version": "0.29.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -18,7 +18,8 @@
     "vercel-build": "tsx scripts/check-deployment-env.ts && prisma generate && prisma migrate deploy && npm run db:bootstrap:production && next build",
     "db:seed:production": "tsx prisma/bootstrap-production.ts",
     "deploy:check": "tsx scripts/check-deployment-env.ts",
-    "db:bootstrap:production": "tsx prisma/bootstrap-production.ts"
+    "db:bootstrap:production": "tsx prisma/bootstrap-production.ts",
+    "test:postgres": "tsx scripts/postgres-concurrency-tests.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

@@ -12,6 +12,7 @@ import {
 } from "@/generated/prisma/enums";
 import { requireWriteUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { lockTransactionResource } from "@/lib/transaction-locks";
 import {
   normalizeLookup,
   normalizeStatus,
@@ -610,25 +611,32 @@ async function processCsvImportChunk(input: {
       : `csv:${batch.id}:${row.id}`;
 
     try {
-      const apiExisting = isApi
+      const apiExistingId = isApi
         ? data.existingMatchId
-          ? await prisma.match.findUnique({
+          ? (await prisma.match.findUnique({
               where: { id: data.existingMatchId },
-              include: { stats: true, overrides: true },
-            })
+              select: { id: true },
+            }))?.id ?? null
           : batch.sourceId && sourceExternalId
-            ? await prisma.match.findFirst({
+            ? (await prisma.match.findFirst({
                 where: {
                   dataSourceId: batch.sourceId,
                   sourceExternalId,
                 },
-                include: { stats: true, overrides: true },
-              })
+                select: { id: true },
+              }))?.id ?? null
             : null
         : null;
 
-      if (apiExisting) {
+      if (apiExistingId) {
         await prisma.$transaction(async (tx) => {
+          await lockTransactionResource(tx, "match", apiExistingId);
+          const apiExisting = await tx.match.findUnique({
+            where: { id: apiExistingId },
+            include: { stats: true, overrides: true },
+          });
+          if (!apiExisting) throw new Error("Mecz zniknął przed zatwierdzeniem importu.");
+
           const importedAt = new Date();
           const locked = new Set(apiExisting.overrides.map((override) => override.fieldName));
           const oldValues: Record<string, unknown> = {

@@ -12,9 +12,24 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: staty_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d staty_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
-      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/staty_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/staty_ci
       AUTH_SECRET: ci-secret-minimum-32-characters-long
       CI: true
       NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
@@ -54,16 +69,26 @@ jobs:
         run: npm run db:generate
         timeout-minutes: 4
 
+      - name: Deploy migrations to clean PostgreSQL
+        run: npm run db:deploy
+        timeout-minutes: 4
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
-      - name: Tests
+      - name: Unit tests
         run: npm test
+
+      - name: PostgreSQL atomicity E2E
+        run: npm run test:postgres
+        timeout-minutes: 5
 
       - name: Build
         run: npm run build
+        env:
+          NEXT_BUILD_CPUS: "2"
+          NEXT_SKIP_BUILD_TYPECHECK: "1"
         timeout-minutes: 8
-

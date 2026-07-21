@@ -7,6 +7,7 @@ import { DELETE_MATCH_CONFIRMATION, isDeleteMatchConfirmationValid } from "@/lib
 import { requireUser, requireWriteUser } from "@/lib/auth";
 import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
+import { lockTransactionResource } from "@/lib/transaction-locks";
 import { valueToString } from "@/lib/utils";
 import { matchFormSchema, type MatchFormData } from "@/lib/validation/match";
 
@@ -126,41 +127,47 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
   const relationError = await validateRelations(parsed.data, parsed.data.matchId);
   if (relationError) return { message: relationError };
 
-  const existing = await prisma.match.findUnique({ where: { id: parsed.data.matchId }, include: { stats: true } });
-  if (!existing) return { message: "Mecz nie istnieje." };
-
-  const oldValues: Record<string, unknown> = {
-    seasonId: existing.seasonId,
-    round: existing.round,
-    kickoffAt: existing.kickoffAt,
-    homeTeamId: existing.homeTeamId,
-    awayTeamId: existing.awayTeamId,
-    homeScore: existing.homeScore,
-    awayScore: existing.awayScore,
-    status: existing.status,
-    refereeId: existing.refereeId,
-    note: existing.note,
-    ...Object.fromEntries(statFields.map((field) => [field, existing.stats?.[field] ?? null])),
-  };
-  const newValues: Record<string, unknown> = {
-    seasonId: parsed.data.seasonId,
-    round: parsed.data.round,
-    kickoffAt: parsed.data.kickoffAt,
-    homeTeamId: parsed.data.homeTeamId,
-    awayTeamId: parsed.data.awayTeamId,
-    homeScore: parsed.data.homeScore,
-    awayScore: parsed.data.awayScore,
-    status: parsed.data.status,
-    refereeId: parsed.data.refereeId,
-    note: parsed.data.note,
-    ...statsData(parsed.data),
-  };
-  const changes = Object.keys(newValues).filter((key) => valueToString(oldValues[key]) !== valueToString(newValues[key]));
-
   try {
     await prisma.$transaction(async (tx) => {
+      await lockTransactionResource(tx, "match", parsed.data.matchId!);
+      const existing = await tx.match.findUnique({
+        where: { id: parsed.data.matchId! },
+        include: { stats: true },
+      });
+      if (!existing) throw new Error("MATCH_MISSING");
+
+      const oldValues: Record<string, unknown> = {
+        seasonId: existing.seasonId,
+        round: existing.round,
+        kickoffAt: existing.kickoffAt,
+        homeTeamId: existing.homeTeamId,
+        awayTeamId: existing.awayTeamId,
+        homeScore: existing.homeScore,
+        awayScore: existing.awayScore,
+        status: existing.status,
+        refereeId: existing.refereeId,
+        note: existing.note,
+        ...Object.fromEntries(statFields.map((field) => [field, existing.stats?.[field] ?? null])),
+      };
+      const newValues: Record<string, unknown> = {
+        seasonId: parsed.data.seasonId,
+        round: parsed.data.round,
+        kickoffAt: parsed.data.kickoffAt,
+        homeTeamId: parsed.data.homeTeamId,
+        awayTeamId: parsed.data.awayTeamId,
+        homeScore: parsed.data.homeScore,
+        awayScore: parsed.data.awayScore,
+        status: parsed.data.status,
+        refereeId: parsed.data.refereeId,
+        note: parsed.data.note,
+        ...statsData(parsed.data),
+      };
+      const changes = Object.keys(newValues).filter(
+        (key) => valueToString(oldValues[key]) !== valueToString(newValues[key]),
+      );
+
       await tx.match.update({
-        where: { id: parsed.data.matchId },
+        where: { id: parsed.data.matchId! },
         data: {
           seasonId: parsed.data.seasonId,
           round: parsed.data.round,
@@ -198,7 +205,8 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
         })));
       }
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "MATCH_MISSING") return { message: "Mecz nie istnieje." };
     return { message: "Nie udało się zaktualizować meczu." };
   }
 
@@ -208,7 +216,6 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
   revalidatePath(`/matches/${parsed.data.matchId}/edit`);
   redirect(`/matches/${parsed.data.matchId}`);
 }
-
 
 export async function deleteMatchAction(_: MatchActionState, formData: FormData): Promise<MatchActionState> {
   const user = await requireUser();

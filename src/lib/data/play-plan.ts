@@ -60,6 +60,8 @@ export function playPlanSnapshotFromJson(
   return item as unknown as PlayPlanRecommendationSnapshot;
 }
 
+type PlayPlanTransactionClient = Pick<Prisma.TransactionClient, "dailyPlayPlan">;
+
 function evaluationItem(item: {
   id: string;
   status: string;
@@ -84,6 +86,47 @@ function evaluationItem(item: {
     odds: item.oddsSnapshot,
     status: item.status === "PLAYED" ? "PLAYED" : "SELECTED",
   };
+}
+
+export async function loadDailyPlayPlanEvaluation(
+  client: PlayPlanTransactionClient,
+  input: { userId: string; planDate: Date; now?: Date },
+) {
+  const now = input.now ?? new Date();
+  const plan = await client.dailyPlayPlan.findUnique({
+    where: { userId_planDate: { userId: input.userId, planDate: input.planDate } },
+    include: {
+      items: {
+        select: {
+          id: true,
+          status: true,
+          plannedStake: true,
+          oddsSnapshot: true,
+          snapshot: true,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      },
+    },
+  });
+
+  if (!plan) return null;
+  const items = plan.items.flatMap((item) => {
+    const snapshot = playPlanSnapshotFromJson(item.snapshot);
+    return snapshot ? [{ ...item, snapshot }] : [];
+  });
+  const evaluation = evaluatePlayPlan({
+    settings: {
+      bankroll: plan.bankroll,
+      maxDailyStakePercent: plan.maxDailyStakePercent,
+      maxMatchStakePercent: plan.maxMatchStakePercent,
+      maxLeagueStakePercent: plan.maxLeagueStakePercent,
+      maxMarketStakePercent: plan.maxMarketStakePercent,
+    },
+    items: items.map(evaluationItem),
+    now,
+  });
+
+  return { plan, items, evaluation };
 }
 
 export async function loadDailyPlayPlan(input: {
