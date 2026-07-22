@@ -113,6 +113,7 @@ function NavigationLink({
   return (
     <Link
       href={item.href}
+      prefetch={nested ? false : undefined}
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}

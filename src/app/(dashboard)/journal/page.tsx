@@ -81,12 +81,14 @@ function currency(value: number | null | undefined) {
   }).format(value);
 }
 
+const journalDateTimeFormatter = new Intl.DateTimeFormat("pl-PL", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Europe/Warsaw",
+});
+
 function dateTime(value: Date) {
-  return new Intl.DateTimeFormat("pl-PL", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Europe/Warsaw",
-  }).format(value);
+  return journalDateTimeFormatter.format(value);
 }
 
 function statusClass(value: string) {
@@ -271,7 +273,7 @@ export default async function JournalPage({
             Watchlista kandydatów, zapis decyzji, kursów, stawek oraz późniejsze rozliczenie.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           <Link
             href="#dodaj-recznie"
             className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"
@@ -284,24 +286,31 @@ export default async function JournalPage({
               <RefreshCw size={16} className="mr-2" />Rozlicz zakończone
             </Button>
           </form>
-          <Link
-            href={`/journal/calibration${query.size ? `?${query.toString()}` : ""}`}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-300 bg-white px-4 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:bg-zinc-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
-          >
-            <TrendingUp size={16} className="mr-2" />Kalibracja modelu
-          </Link>
-          <Link
-            href={`/journal/export?${analyticsQuery.toString()}`}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-          >
-            <BarChart3 size={16} className="mr-2" />Eksport analityki
-          </Link>
-          <Link
-            href={`/journal/export${query.size ? `?${query.toString()}` : ""}`}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          >
-            <Download size={16} className="mr-2" />Pełny CSV
-          </Link>
+          <details className="relative">
+            <summary className="inline-flex h-10 cursor-pointer list-none items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium hover:bg-zinc-50 [&::-webkit-details-marker]:hidden dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800">
+              Więcej opcji
+            </summary>
+            <div className="absolute right-0 z-20 mt-2 grid min-w-56 gap-1 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+              <Link
+                href={`/journal/calibration${query.size ? `?${query.toString()}` : ""}`}
+                className="inline-flex h-10 items-center rounded-lg px-3 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <TrendingUp size={16} className="mr-2" />Kalibracja modelu
+              </Link>
+              <Link
+                href={`/journal/export?${analyticsQuery.toString()}`}
+                className="inline-flex h-10 items-center rounded-lg px-3 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <BarChart3 size={16} className="mr-2" />Eksport analityki
+              </Link>
+              <Link
+                href={`/journal/export${query.size ? `?${query.toString()}` : ""}`}
+                className="inline-flex h-10 items-center rounded-lg px-3 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <Download size={16} className="mr-2" />Pełny CSV
+              </Link>
+            </div>
+          </details>
         </div>
       </div>
 

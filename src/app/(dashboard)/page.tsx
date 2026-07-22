@@ -17,13 +17,21 @@ import { warsawDayBounds } from "@/lib/date-warsaw-day";
 import { prisma } from "@/lib/db";
 import { canWrite } from "@/lib/permissions";
 
+const matchDateTimeFormatter = new Intl.DateTimeFormat("pl-PL", {
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/Warsaw",
+});
+
+const importDateTimeFormatter = new Intl.DateTimeFormat("pl-PL", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Europe/Warsaw",
+});
+
 function dateTime(value: Date) {
-  return new Intl.DateTimeFormat("pl-PL", {
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Warsaw",
-  }).format(value);
+  return matchDateTimeFormatter.format(value);
 }
 
 function planStatusLabel(value: string | null) {
@@ -195,7 +203,7 @@ export default async function DashboardPage() {
               {latestImport ? (
                 <Link href={`/imports/${latestImport.id}`} className="rounded-lg bg-zinc-50 p-3 hover:bg-zinc-100 dark:bg-zinc-950 dark:hover:bg-zinc-800">
                   <div className="flex items-center gap-2 font-medium"><FileUp size={16} className="text-emerald-600" />{latestImport.fileName}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{latestImport.status} · {new Intl.DateTimeFormat("pl-PL", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" }).format(latestImport.createdAt)}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{latestImport.status} · {importDateTimeFormatter.format(latestImport.createdAt)}</div>
                 </Link>
               ) : <div className="text-zinc-500">Brak importów.</div>}
               <Link href="/data-quality" className="inline-flex items-center font-medium text-emerald-600 hover:underline"><Clock3 size={15} className="mr-2" />Sprawdź kompletność danych</Link>
