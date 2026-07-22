@@ -638,6 +638,9 @@ model DailyPlayPlanItem {
   bookmakerSnapshot String?
   reason            String?
   playedAt          DateTime?
+  skipReasonCode    String?
+  skipNote          String?
+  skippedAt         DateTime?
   plan              DailyPlayPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   analysisPick      AnalysisPick  @relation(fields: [analysisPickId], references: [id], onDelete: Restrict)
   createdAt         DateTime @default(now())
