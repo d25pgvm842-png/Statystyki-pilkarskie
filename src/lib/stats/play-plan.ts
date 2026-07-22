@@ -1,5 +1,5 @@
 export type PlayPlanPriority = "TOP" | "VALUE" | "WATCH" | "BLOCKED";
-export type PlayPlanItemStatus = "SELECTED" | "PLAYED";
+export type PlayPlanItemStatus = "SELECTED" | "PLAYED" | "SKIPPED";
 
 export type PlayPlanRecommendationSnapshot = {
   capturedAt: string;
@@ -63,6 +63,7 @@ export type PlayPlanItemInput = {
   plannedStake: number | null;
   odds: number | null;
   status: PlayPlanItemStatus;
+  actualStatus?: string | null;
 };
 
 export type PlayPlanItemAssessment = {
@@ -81,6 +82,7 @@ export type PlayPlanExposure = {
 export type PlayPlanEvaluation = {
   items: number;
   playedItems: number;
+  skippedItems: number;
   totalStake: number;
   stakePercent: number | null;
   averageScore: number | null;
@@ -168,6 +170,7 @@ export function evaluatePlayPlan(input: {
   const groupedSides = new Map<string, Set<string>>();
   const matchCounts = new Map<string, number>();
   for (const item of input.items) {
+    if (item.status === "SKIPPED") continue;
     const key = conflictKey(item);
     const sides = groupedSides.get(key) ?? new Set<string>();
     sides.add(item.side);
@@ -178,9 +181,16 @@ export function evaluatePlayPlan(input: {
   for (const item of input.items) {
     const itemBlockers: string[] = [];
     const itemWarnings: string[] = [];
+    if (item.status === "SKIPPED") {
+      itemAssessments[item.id] = { blockers: [], warnings: [] };
+      continue;
+    }
     const stake = finitePositive(item.plannedStake);
     const odds = finitePositive(item.odds);
     const ev = finite(item.expectedValue);
+    if (item.status === "SELECTED" && item.actualStatus && item.actualStatus !== "WATCHING") {
+      itemBlockers.push("Pozycja została już zagrana lub rozliczona poza planem.");
+    }
 
     if (item.priority === "BLOCKED") {
       itemBlockers.push("Rekomendacja ma status odrzucona.");
@@ -217,7 +227,8 @@ export function evaluatePlayPlan(input: {
     warnings.push(...itemWarnings.map((message) => `${item.id}: ${message}`));
   }
 
-  const totalStake = money(input.items.reduce((sum, item) => {
+  const activeItems = input.items.filter((item) => item.status !== "SKIPPED");
+  const totalStake = money(activeItems.reduce((sum, item) => {
     const stake = finitePositive(item.plannedStake);
     return stake === null ? sum : sum + stake;
   }, 0));
@@ -229,19 +240,19 @@ export function evaluatePlayPlan(input: {
   }
 
   const matchExposure = exposure(
-    input.items,
+    activeItems,
     bankroll,
     Math.max(0, input.settings.maxMatchStakePercent),
     (item) => item.matchId,
   );
   const leagueExposure = exposure(
-    input.items,
+    activeItems,
     bankroll,
     Math.max(0, input.settings.maxLeagueStakePercent),
     (item) => item.leagueId,
   );
   const marketExposure = exposure(
-    input.items,
+    activeItems,
     bankroll,
     Math.max(0, input.settings.maxMarketStakePercent),
     (item) => item.statKey,
@@ -257,7 +268,7 @@ export function evaluatePlayPlan(input: {
     blockers.push(`Ekspozycja na rynek ${item.key} przekracza limit ${item.limitPercent}%.`);
   }
 
-  const evRows = input.items.flatMap((item) => {
+  const evRows = activeItems.flatMap((item) => {
     const stake = finitePositive(item.plannedStake);
     const ev = finite(item.expectedValue);
     return stake === null || ev === null ? [] : [{ stake, ev }];
@@ -269,8 +280,8 @@ export function evaluatePlayPlan(input: {
   const weightedExpectedValue = evStake > 0
     ? evRows.reduce((sum, row) => sum + row.stake * row.ev, 0) / evStake
     : null;
-  const averageScore = input.items.length
-    ? input.items.reduce((sum, item) => sum + item.score, 0) / input.items.length
+  const averageScore = activeItems.length
+    ? activeItems.reduce((sum, item) => sum + item.score, 0) / activeItems.length
     : null;
 
   const uniqueBlockers = unique(blockers);
@@ -278,6 +289,7 @@ export function evaluatePlayPlan(input: {
   return {
     items: input.items.length,
     playedItems: input.items.filter((item) => item.status === "PLAYED").length,
+    skippedItems: input.items.filter((item) => item.status === "SKIPPED").length,
     totalStake,
     stakePercent,
     averageScore,
@@ -290,7 +302,7 @@ export function evaluatePlayPlan(input: {
     marketExposure,
     blockers: uniqueBlockers,
     warnings: uniqueWarnings,
-    approvable: input.items.length > 0 && uniqueBlockers.length === 0,
+    approvable: activeItems.length > 0 && uniqueBlockers.length === 0,
   };
 }
 

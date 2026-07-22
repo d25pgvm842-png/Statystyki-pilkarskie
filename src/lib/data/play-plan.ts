@@ -5,6 +5,11 @@ import {
   type PlayPlanItemInput,
   type PlayPlanRecommendationSnapshot,
 } from "@/lib/stats/play-plan";
+import {
+  reconcilePlayPlanItem,
+  summarizePlayPlanDay,
+  type PlayPlanActual,
+} from "@/lib/stats/play-plan-reconciliation";
 
 const DEFAULT_SETTINGS = {
   bankroll: 1000,
@@ -68,6 +73,7 @@ function evaluationItem(item: {
   plannedStake: number | null;
   oddsSnapshot: number | null;
   snapshot: PlayPlanRecommendationSnapshot;
+  analysisPick?: { status: string };
 }): PlayPlanItemInput {
   return {
     id: item.id,
@@ -84,7 +90,12 @@ function evaluationItem(item: {
     expectedValue: item.snapshot.expectedValue,
     plannedStake: item.plannedStake,
     odds: item.oddsSnapshot,
-    status: item.status === "PLAYED" ? "PLAYED" : "SELECTED",
+    status: item.status === "PLAYED"
+      ? "PLAYED"
+      : item.status === "SKIPPED"
+        ? "SKIPPED"
+        : "SELECTED",
+    actualStatus: item.analysisPick?.status ?? null,
   };
 }
 
@@ -103,6 +114,7 @@ export async function loadDailyPlayPlanEvaluation(
           plannedStake: true,
           oddsSnapshot: true,
           snapshot: true,
+          analysisPick: { select: { status: true } },
         },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       },
@@ -183,7 +195,30 @@ export async function loadDailyPlayPlan(input: {
 
   const items = plan?.items.flatMap((item) => {
     const snapshot = playPlanSnapshotFromJson(item.snapshot);
-    return snapshot ? [{ ...item, snapshot }] : [];
+    if (!snapshot) return [];
+    const actual: PlayPlanActual = {
+      status: item.analysisPick.status,
+      result: item.analysisPick.result,
+      odds: item.analysisPick.odds,
+      closingOdds: item.analysisPick.closingOdds,
+      stake: item.analysisPick.stake,
+      bookmaker: item.analysisPick.bookmaker,
+      placedAt: item.analysisPick.placedAt,
+      settledAt: item.analysisPick.settledAt,
+      actualValue: item.analysisPick.actualValue,
+    };
+    const reconciliation = reconcilePlayPlanItem({
+      itemStatus: item.status,
+      capturedAt: new Date(snapshot.capturedAt),
+      plannedStake: item.plannedStake,
+      plannedOdds: item.oddsSnapshot,
+      plannedBookmaker: item.bookmakerSnapshot,
+      skipReasonCode: item.skipReasonCode,
+      skipNote: item.skipNote,
+      skippedAt: item.skippedAt,
+      actual,
+    });
+    return [{ ...item, snapshot, actual, reconciliation }];
   }) ?? [];
   const settings = plan ? {
     bankroll: plan.bankroll,
@@ -197,6 +232,11 @@ export async function loadDailyPlayPlan(input: {
     items: items.map(evaluationItem),
     now,
   });
+  const daySummary = summarizePlayPlanDay(items.map((item) => ({
+    itemStatus: item.status,
+    plannedStake: item.plannedStake,
+    actual: item.actual,
+  })));
 
   return {
     dateKey,
@@ -205,6 +245,7 @@ export async function loadDailyPlayPlan(input: {
     items,
     settings,
     evaluation,
+    daySummary,
     history,
   };
 }

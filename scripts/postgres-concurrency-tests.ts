@@ -6,7 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("TEST_DATABASE_URL albo DATABASE_URL jest wymagany.");
 
 const pool = new Pool({ connectionString: databaseUrl, max: 12 });
-const runId = `h1253_${randomUUID().replaceAll("-", "")}`;
+const runId = `s126a_${randomUUID().replaceAll("-", "")}`;
 const id = (suffix: string) => `${runId}_${suffix}`;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -192,6 +192,89 @@ async function testDoublePlay() {
   assert.equal(events.rows[0]?.count, "1");
 }
 
+async function testSkipVsPlay() {
+  const pickId = id("pick_skip_race");
+  const itemId = id("item_skip_race");
+  await transaction(async (client) => {
+    await client.query(
+      `INSERT INTO "AnalysisPick" (
+        "id", "userId", "matchId", "fingerprint", "source", "statKey", "statLabel", "scope",
+        "threshold", "side", "status", "decisionAt", "decisionTiming", "updatedAt"
+      ) VALUES ($1, $2, $3, $4, 'MANUAL', 'corners', 'Rzuty rożne', 'MATCH_TOTAL', 10.5, 'UNDER',
+        'WATCHING', NOW(), 'PRE_MATCH', NOW())`,
+      [pickId, id("user"), id("match"), id("fingerprint_skip_race")],
+    );
+    await client.query(
+      `INSERT INTO "DailyPlayPlanItem" (
+        "id", "planId", "analysisPickId", "status", "priority", "score", "snapshot",
+        "plannedStake", "oddsSnapshot", "bookmakerSnapshot", "updatedAt"
+      ) VALUES ($1, $2, $3, 'SELECTED', 'TOP', 88, '{}'::jsonb, 12, 1.95, 'CI', NOW())`,
+      [itemId, id("plan"), pickId],
+    );
+  });
+
+  const play = transaction(async (client) => {
+    await lock(client, "daily-play-plan", id("plan"));
+    const current = await client.query<{ status: string }>(
+      `SELECT "status" FROM "DailyPlayPlanItem" WHERE "id" = $1`,
+      [itemId],
+    );
+    if (current.rows[0]?.status !== "SELECTED") return false;
+    await lock(client, "analysis-pick", pickId);
+    await sleep(50);
+    await client.query(
+      `UPDATE "AnalysisPick" SET "status" = 'PLAYED', "odds" = 1.9, "stake" = 12, "placedAt" = NOW(), "updatedAt" = NOW() WHERE "id" = $1`,
+      [pickId],
+    );
+    await client.query(
+      `UPDATE "DailyPlayPlanItem" SET "status" = 'PLAYED', "playedAt" = NOW(), "updatedAt" = NOW() WHERE "id" = $1`,
+      [itemId],
+    );
+    await client.query(
+      `INSERT INTO "DailyPlayPlanEvent" ("id", "planId", "userId", "type", "details") VALUES ($1, $2, $3, 'PLAY_ITEM', '{}'::jsonb)`,
+      [id("event_skip_race_play"), id("plan"), id("user")],
+    );
+    return true;
+  });
+
+  await sleep(5);
+  const skip = transaction(async (client) => {
+    await lock(client, "daily-play-plan", id("plan"));
+    const current = await client.query<{ status: string }>(
+      `SELECT "status" FROM "DailyPlayPlanItem" WHERE "id" = $1`,
+      [itemId],
+    );
+    if (current.rows[0]?.status !== "SELECTED") return false;
+    await client.query(
+      `UPDATE "DailyPlayPlanItem" SET "status" = 'SKIPPED', "skipReasonCode" = 'ODDS_CHANGED', "skippedAt" = NOW(), "updatedAt" = NOW() WHERE "id" = $1`,
+      [itemId],
+    );
+    await client.query(
+      `INSERT INTO "DailyPlayPlanEvent" ("id", "planId", "userId", "type", "details") VALUES ($1, $2, $3, 'SKIP_ITEM', '{}'::jsonb)`,
+      [id("event_skip_race_skip"), id("plan"), id("user")],
+    );
+    return true;
+  });
+
+  const results = await Promise.all([play, skip]);
+  assert.deepEqual(results.sort(), [false, true]);
+  const state = await pool.query<{ itemStatus: string; pickStatus: string }>(
+    `SELECT item."status" AS "itemStatus", pick."status" AS "pickStatus"
+     FROM "DailyPlayPlanItem" item JOIN "AnalysisPick" pick ON pick."id" = item."analysisPickId"
+     WHERE item."id" = $1`,
+    [itemId],
+  );
+  const row = state.rows[0];
+  assert.ok(row?.itemStatus === "PLAYED" || row?.itemStatus === "SKIPPED");
+  if (row?.itemStatus === "PLAYED") assert.equal(row.pickStatus, "PLAYED");
+  if (row?.itemStatus === "SKIPPED") assert.equal(row.pickStatus, "WATCHING");
+  const events = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS "count" FROM "DailyPlayPlanEvent" WHERE "id" IN ($1, $2)`,
+    [id("event_skip_race_play"), id("event_skip_race_skip")],
+  );
+  assert.equal(events.rows[0]?.count, "1");
+}
+
 async function resetPick(suffix: string) {
   const pickId = id(`pick_${suffix}`);
   await pool.query(
@@ -321,10 +404,11 @@ async function main() {
     await seed();
     await testApproveVsEdit();
     await testDoublePlay();
+    await testSkipVsPlay();
     await testDoubleAutoSettle();
     await testManualWinsAgainstAuto();
     await testManualOverrideWinsAgainstLegacyImport();
-    console.log("PostgreSQL atomicity E2E: 5/5 PASS");
+    console.log("PostgreSQL atomicity E2E: 6/6 PASS");
   } finally {
     try {
       await cleanup();

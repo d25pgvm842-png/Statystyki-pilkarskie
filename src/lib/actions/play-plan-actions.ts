@@ -19,6 +19,7 @@ import { syncForwardSignalsForPick } from "@/lib/data/strategy-forward";
 import { prisma } from "@/lib/db";
 import { lockTransactionResource } from "@/lib/transaction-locks";
 import type { PlayPlanRecommendationSnapshot } from "@/lib/stats/play-plan";
+import { isPlayPlanSkipReasonCode } from "@/lib/stats/play-plan-reconciliation";
 import { valueToString } from "@/lib/utils";
 
 function text(formData: FormData, name: string) {
@@ -273,7 +274,7 @@ export async function updatePlayPlanItemAction(formData: FormData) {
       });
       if (!item) throw new Error("ITEM_MISSING");
       dateKey = item.plan.planDate.toISOString().slice(0, 10);
-      if (item.plan.status !== "DRAFT" || item.status === "PLAYED") throw new Error("PLAN_LOCKED");
+      if (item.plan.status !== "DRAFT" || item.status !== "SELECTED") throw new Error("PLAN_LOCKED");
 
       await tx.dailyPlayPlanItem.update({ where: { id: item.id }, data: next });
       await tx.dailyPlayPlanEvent.create({
@@ -324,7 +325,7 @@ export async function removePlayPlanItemAction(formData: FormData) {
       });
       if (!item) throw new Error("ITEM_MISSING");
       dateKey = item.plan.planDate.toISOString().slice(0, 10);
-      if (item.plan.status !== "DRAFT" || item.status === "PLAYED") throw new Error("PLAN_LOCKED");
+      if (item.plan.status !== "DRAFT" || item.status !== "SELECTED") throw new Error("PLAN_LOCKED");
 
       await tx.dailyPlayPlanEvent.create({
         data: {
@@ -410,12 +411,14 @@ export async function reopenPlayPlanAction(formData: FormData) {
       await lockTransactionResource(tx, "daily-play-plan", planId);
       const plan = await tx.dailyPlayPlan.findFirst({
         where: { id: planId, userId: user.id },
-        include: { items: { select: { status: true } } },
+        include: { items: { select: { status: true, analysisPick: { select: { status: true } } } } },
       });
       if (!plan) throw new Error("PLAN_MISSING");
       dateKey = plan.planDate.toISOString().slice(0, 10);
       if (plan.status !== "APPROVED") throw new Error("PLAN_LOCKED");
-      if (plan.items.some((item) => item.status === "PLAYED")) throw new Error("PLAN_PLAYED");
+      if (plan.items.some((item) => item.status !== "SELECTED" || item.analysisPick.status !== AnalysisPickStatus.WATCHING)) {
+        throw new Error("PLAN_PLAYED");
+      }
 
       await tx.dailyPlayPlan.update({
         where: { id: plan.id },
@@ -472,6 +475,11 @@ export async function archivePlayPlanAction(formData: FormData) {
 export async function markPlayPlanItemPlayedAction(formData: FormData) {
   const user = await requireWriteUser();
   const itemId = text(formData, "itemId");
+  const submittedActual = {
+    stake: requiredNumber(formData, "actualStake", 0.01, 10000000),
+    odds: requiredNumber(formData, "actualOdds", 1.01, 1000),
+    bookmaker: optionalText(formData, "actualBookmaker", 120),
+  };
   const initial = await prisma.dailyPlayPlanItem.findFirst({
     where: { id: itemId, plan: { userId: user.id } },
     select: { planId: true },
@@ -488,7 +496,7 @@ export async function markPlayPlanItemPlayedAction(formData: FormData) {
       });
       if (!item) throw new Error("ITEM_MISSING");
       dateKey = item.plan.planDate.toISOString().slice(0, 10);
-      if (item.plan.status !== "APPROVED" || item.status === "PLAYED") throw new Error("PLAN_LOCKED");
+      if (item.plan.status !== "APPROVED" || item.status !== "SELECTED") throw new Error("PLAN_LOCKED");
 
       const snapshot = playPlanSnapshotFromJson(item.snapshot);
       if (!snapshot) throw new Error("INVALID_SNAPSHOT");
@@ -508,12 +516,15 @@ export async function markPlayPlanItemPlayedAction(formData: FormData) {
       }
 
       let playedAt = pick.placedAt ?? now;
+      let actualStake = pick.stake;
+      let actualOdds = pick.odds;
+      let actualBookmaker = pick.bookmaker;
       if (pick.status === AnalysisPickStatus.WATCHING) {
         const next = {
           status: AnalysisPickStatus.PLAYED,
-          odds: item.oddsSnapshot,
-          bookmaker: item.bookmakerSnapshot,
-          stake: item.plannedStake,
+          odds: submittedActual.odds,
+          bookmaker: submittedActual.bookmaker,
+          stake: submittedActual.stake,
           placedAt: now,
           result: null,
           actualValue: null,
@@ -521,6 +532,9 @@ export async function markPlayPlanItemPlayedAction(formData: FormData) {
         };
         await tx.analysisPick.update({ where: { id: pick.id }, data: next });
         playedAt = now;
+        actualStake = submittedActual.stake;
+        actualOdds = submittedActual.odds;
+        actualBookmaker = submittedActual.bookmaker;
         const changes = Object.entries(next).flatMap(([fieldName, newValue]) => {
           const oldValue = valueToString(pick[fieldName as keyof typeof pick]);
           const nextValue = valueToString(newValue);
@@ -538,10 +552,17 @@ export async function markPlayPlanItemPlayedAction(formData: FormData) {
         await syncForwardSignalsForPick(tx, { pickId: pick.id, userId: user.id });
       }
 
-      await tx.dailyPlayPlanItem.update({
-        where: { id: item.id },
-        data: { status: "PLAYED", playedAt },
+      const claimed = await tx.dailyPlayPlanItem.updateMany({
+        where: { id: item.id, status: "SELECTED" },
+        data: {
+          status: "PLAYED",
+          playedAt,
+          skipReasonCode: null,
+          skipNote: null,
+          skippedAt: null,
+        },
       });
+      if (claimed.count !== 1) throw new Error("PLAN_LOCKED");
       await tx.dailyPlayPlanEvent.create({
         data: {
           planId: item.planId,
@@ -550,10 +571,17 @@ export async function markPlayPlanItemPlayedAction(formData: FormData) {
           details: {
             itemId: item.id,
             analysisPickId: pick.id,
-            stake: item.plannedStake,
-            odds: item.oddsSnapshot,
-            bookmaker: item.bookmakerSnapshot,
-            playedAt: playedAt.toISOString(),
+            planned: {
+              stake: item.plannedStake,
+              odds: item.oddsSnapshot,
+              bookmaker: item.bookmakerSnapshot,
+            },
+            actual: {
+              stake: actualStake,
+              odds: actualOdds,
+              bookmaker: actualBookmaker,
+              playedAt: playedAt.toISOString(),
+            },
           },
         },
       });
@@ -571,4 +599,68 @@ export async function markPlayPlanItemPlayedAction(formData: FormData) {
 
   revalidatePlayPlanPaths();
   redirect(planPath(dateKey, "&played=1"));
+}
+
+
+export async function skipPlayPlanItemAction(formData: FormData) {
+  const user = await requireWriteUser();
+  const itemId = text(formData, "itemId");
+  const skipReasonCode = text(formData, "skipReasonCode");
+  const skipNote = optionalText(formData, "skipNote", 1000);
+  if (!isPlayPlanSkipReasonCode(skipReasonCode)) redirect("/play-plan?error=skipReason");
+
+  const initial = await prisma.dailyPlayPlanItem.findFirst({
+    where: { id: itemId, plan: { userId: user.id } },
+    select: { planId: true },
+  });
+  if (!initial) redirect("/play-plan?error=missing");
+
+  let dateKey = "";
+  let alreadySkipped = false;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockTransactionResource(tx, "daily-play-plan", initial.planId);
+      const item = await tx.dailyPlayPlanItem.findFirst({
+        where: { id: itemId, plan: { userId: user.id } },
+        include: { plan: true },
+      });
+      if (!item) throw new Error("ITEM_MISSING");
+      dateKey = item.plan.planDate.toISOString().slice(0, 10);
+      if (item.plan.status !== "APPROVED") throw new Error("PLAN_LOCKED");
+      if (item.status === "SKIPPED") {
+        alreadySkipped = true;
+        return;
+      }
+      if (item.status !== "SELECTED") throw new Error("PLAN_LOCKED");
+
+      const skippedAt = new Date();
+      const claimed = await tx.dailyPlayPlanItem.updateMany({
+        where: { id: item.id, status: "SELECTED" },
+        data: { status: "SKIPPED", skipReasonCode, skipNote, skippedAt },
+      });
+      if (claimed.count !== 1) throw new Error("PLAN_LOCKED");
+      await tx.dailyPlayPlanEvent.create({
+        data: {
+          planId: item.planId,
+          userId: user.id,
+          type: "SKIP_ITEM",
+          details: {
+            itemId: item.id,
+            analysisPickId: item.analysisPickId,
+            reasonCode: skipReasonCode,
+            note: skipNote,
+            skippedAt: skippedAt.toISOString(),
+          },
+        },
+      });
+    });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "ITEM_MISSING") redirect("/play-plan?error=missing");
+    if (code === "PLAN_LOCKED") redirect(planPath(dateKey, "&error=locked"));
+    throw error;
+  }
+
+  revalidatePlayPlanPaths();
+  redirect(planPath(dateKey, alreadySkipped ? "&already=1" : "&skipped=1"));
 }

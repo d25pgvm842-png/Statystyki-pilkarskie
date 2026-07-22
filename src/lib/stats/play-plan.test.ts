@@ -95,3 +95,30 @@ test("rozpoczęty mecz blokuje niezagraną pozycję", () => {
   assert.equal(result.approvable, false);
   assert.ok(result.blockers.some((blocker) => blocker.includes("już się rozpoczął")));
 });
+
+
+test("pominięta pozycja nie blokuje planu ani ekspozycji", () => {
+  const result = evaluatePlayPlan({
+    settings,
+    now: new Date("2026-08-01T19:00:00Z"),
+    items: [
+      item({ id: "active", plannedStake: 30, kickoffAt: new Date("2026-08-01T20:00:00Z") }),
+      item({ id: "skipped", status: "SKIPPED", plannedStake: 500, side: "UNDER" }),
+    ],
+  });
+  assert.equal(result.skippedItems, 1);
+  assert.equal(result.totalStake, 30);
+  assert.equal(result.matchExposure[0]?.stake, 30);
+  assert.equal(result.itemAssessments.skipped?.blockers.length, 0);
+});
+
+
+test("pozycja zagrana poza planem blokuje zatwierdzenie snapshotu", () => {
+  const result = evaluatePlayPlan({
+    settings,
+    now: new Date("2026-08-01T19:00:00Z"),
+    items: [item({ actualStatus: "PLAYED" })],
+  });
+  assert.equal(result.approvable, false);
+  assert.ok(result.blockers.some((blocker) => blocker.includes("poza planem")));
+});

@@ -10,6 +10,7 @@ import {
   Download,
   ExternalLink,
   PlayCircle,
+  SkipForward,
   RotateCcw,
   Save,
   ShieldAlert,
@@ -22,13 +23,16 @@ import {
   markPlayPlanItemPlayedAction,
   removePlayPlanItemAction,
   reopenPlayPlanAction,
+  skipPlayPlanItemAction,
   updatePlayPlanItemAction,
   updatePlayPlanSettingsAction,
 } from "@/lib/actions/play-plan-actions";
 import { requireUser } from "@/lib/auth";
+import { canWrite } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { loadDailyPlayPlan } from "@/lib/data/play-plan";
 import {
@@ -36,6 +40,10 @@ import {
   dailyRecommendationPriorityLabel,
 } from "@/lib/stats/daily-recommendations";
 import { playPlanStatusLabel } from "@/lib/stats/play-plan";
+import {
+  PLAY_PLAN_SKIP_REASONS,
+  playPlanSkipReasonLabel,
+} from "@/lib/stats/play-plan-reconciliation";
 import { formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -81,9 +89,24 @@ function eventLabel(value: string) {
   if (value === "UPDATE_SETTINGS") return "Zmieniono limity";
   if (value === "APPROVE") return "Zatwierdzono plan";
   if (value === "REOPEN") return "Przywrócono tryb roboczy";
-  if (value === "PLAY_ITEM") return "Przeniesiono do dziennika";
+  if (value === "PLAY_ITEM") return "Zapisano faktyczne zagranie";
+  if (value === "SKIP_ITEM") return "Pominięto pozycję";
   if (value === "ARCHIVE") return "Zarchiwizowano plan";
   return value;
+}
+
+function signed(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined) return "—";
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${formatNumber(value, digits)}`;
+}
+
+function resultLabel(value: string | null | undefined) {
+  if (value === "WIN") return "wygrany";
+  if (value === "LOSS") return "przegrany";
+  if (value === "PUSH") return "zwrot";
+  if (value === "VOID") return "anulowany";
+  return "—";
 }
 
 function scopeLabel(scope: string, target: string) {
@@ -103,7 +126,9 @@ export default async function PlayPlanPage({
     userId: user.id,
     dateKey: stringParam(params.date) || null,
   });
-  const { plan, items, evaluation } = loaded;
+  const { plan, items, evaluation, daySummary } = loaded;
+  const writable = canWrite(user.role);
+  const canReopen = items.every((item) => item.status === "SELECTED" && !item.reconciliation.executed);
 
   return (
     <div className="grid gap-5">
@@ -114,7 +139,7 @@ export default async function PlayPlanPage({
             <h1 className="text-2xl font-semibold">Plan gry dnia</h1>
           </div>
           <p className="mt-1 text-sm text-zinc-500">
-            Zamrożony wybór rekomendacji, stawki, konflikty i limity przed przeniesieniem do dziennika.
+            Zamrożony plan, faktyczne wykonanie i rozliczenie oparte na jednym źródle prawdy w Dzienniku.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -149,15 +174,17 @@ export default async function PlayPlanPage({
 
       {stringParam(params.added) ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Pozycja została dodana do planu.</div> : null}
       {stringParam(params.approved) ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Plan zatwierdzony. Przeniesienie pozycji do dziennika nadal wymaga osobnego kliknięcia.</div> : null}
-      {stringParam(params.played) ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Pozycja została oznaczona jako zagrana i zapisana w dzienniku.</div> : null}
+      {stringParam(params.played) ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">Faktyczne dane zagrania zapisano w Dzienniku.</div> : null}
+      {stringParam(params.skipped) ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Pozycja została pominięta. Dziennik nie został zmieniony.</div> : null}
       {stringParam(params.error) ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
           {stringParam(params.error) === "blocked" ? "Plan ma blokady. Usuń je przed zatwierdzeniem."
-            : stringParam(params.error) === "played" ? "Planu z zagraną pozycją nie można przywrócić do trybu roboczego."
+            : stringParam(params.error) === "played" ? "Planu z rozstrzygniętą pozycją nie można przywrócić do trybu roboczego."
               : stringParam(params.error) === "started" ? "Mecz już się rozpoczął. Pozycji nie przeniesiono do dziennika."
                 : stringParam(params.error) === "missingMarket" ? "Brakuje prawidłowego kursu lub stawki."
-                  : stringParam(params.error) === "locked" ? "Plan jest zablokowany do edycji w obecnym statusie."
-                    : "Nie udało się wykonać operacji na planie."}
+                  : stringParam(params.error) === "locked" ? "Plan lub pozycja jest zablokowana w obecnym statusie."
+                    : stringParam(params.error) === "skipReason" ? "Wybierz prawidłowy powód pominięcia pozycji."
+                      : "Nie udało się wykonać operacji na planie."}
         </div>
       ) : null}
 
@@ -200,7 +227,7 @@ export default async function PlayPlanPage({
               </div>
             </CardHeader>
             <CardContent>
-              {plan.status === "DRAFT" ? (
+              {writable && plan.status === "DRAFT" ? (
                 <form action={updatePlayPlanSettingsAction} className="grid gap-3 xl:grid-cols-5">
                   <input type="hidden" name="planId" value={plan.id} />
                   <label className="grid gap-1 text-sm"><span className="text-zinc-500">Kapitał</span><Input name="bankroll" type="number" min="1" step="0.01" defaultValue={plan.bankroll} /></label>
@@ -226,12 +253,21 @@ export default async function PlayPlanPage({
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
             <Card className="p-4"><div className="text-xs text-zinc-500">Pozycje</div><div className="mt-1 text-2xl font-semibold">{evaluation.items}</div></Card>
-            <Card className="p-4"><div className="text-xs text-zinc-500">Zagrane</div><div className="mt-1 text-2xl font-semibold">{evaluation.playedItems}</div></Card>
+            <Card className="p-4"><div className="text-xs text-zinc-500">Aktywne pozycje</div><div className="mt-1 text-2xl font-semibold">{evaluation.items - evaluation.skippedItems}</div></Card>
             <Card className="p-4"><div className="text-xs text-zinc-500">Stawka</div><div className="mt-1 text-2xl font-semibold">{currency(evaluation.totalStake)}</div></Card>
             <Card className="p-4"><div className="text-xs text-zinc-500">Kapitał w grze</div><div className="mt-1 text-2xl font-semibold">{percent(evaluation.stakePercent)}</div></Card>
             <Card className="p-4"><div className="text-xs text-zinc-500">Śr. ocena</div><div className="mt-1 text-2xl font-semibold">{decimal(evaluation.averageScore, 1)}</div></Card>
             <Card className="p-4"><div className="text-xs text-zinc-500">Ważone EV</div><div className="mt-1 text-2xl font-semibold text-emerald-600">{percent(evaluation.weightedExpectedValue)}</div></Card>
             <Card className="p-4"><div className="text-xs text-zinc-500">Oczekiwany profit</div><div className="mt-1 text-2xl font-semibold text-emerald-600">{currency(evaluation.expectedProfit)}</div></Card>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <Card className="p-4"><div className="text-xs text-zinc-500">Wykonane / pominięte</div><div className="mt-1 text-2xl font-semibold">{daySummary.playedItems + daySummary.settledItems + daySummary.voidItems} / {daySummary.skippedItems}</div><div className="text-xs text-zinc-500">realizacja {percent(daySummary.executionRate)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-zinc-500">Stawka faktyczna</div><div className="mt-1 text-2xl font-semibold">{currency(daySummary.executedStake)}</div><div className="text-xs text-zinc-500">różnica {currency(daySummary.stakeDifference)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-zinc-500">Rozliczone</div><div className="mt-1 text-2xl font-semibold">{daySummary.settledItems + daySummary.voidItems}</div><div className="text-xs text-zinc-500">obrót {currency(daySummary.turnover)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-zinc-500">Profit</div><div className={`mt-1 text-2xl font-semibold ${daySummary.profit === null ? "text-zinc-500" : daySummary.profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>{currency(daySummary.profit)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-zinc-500">ROI</div><div className="mt-1 text-2xl font-semibold">{percent(daySummary.roi)}</div></Card>
+            <Card className="p-4"><div className="text-xs text-zinc-500">Średni CLV</div><div className="mt-1 text-2xl font-semibold">{percent(daySummary.averageClv)}</div></Card>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
@@ -258,7 +294,10 @@ export default async function PlayPlanPage({
                         <div className="mt-1 text-sm text-zinc-500">{snapshot.leagueName} · {snapshot.seasonName} · {dateTime(snapshot.kickoffAt)}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {item.status === "PLAYED" ? <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">W dzienniku</span> : null}
+                        {item.status === "SKIPPED" ? <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">Pominięto</span> : null}
+                        {item.reconciliation.lifecycleStatus === "PLAYED" ? <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">Zagrane</span> : null}
+                        {item.reconciliation.lifecycleStatus === "SETTLED" ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Rozliczone</span> : null}
+                        {item.reconciliation.lifecycleStatus === "VOID" ? <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">VOID</span> : null}
                         <span className={`rounded-full px-2 py-1 text-xs font-medium ${dailyRecommendationPriorityClass(snapshot.recommendationPriority)}`}>{dailyRecommendationPriorityLabel(snapshot.recommendationPriority)}</span>
                         <span className="text-xl font-semibold">{snapshot.recommendationScore}</span>
                       </div>
@@ -275,6 +314,38 @@ export default async function PlayPlanPage({
                       <div><div className="text-xs text-zinc-500">Strategia</div><div className="font-semibold">{snapshot.bestStrategy?.strategyName ?? "—"}</div><div className="text-xs text-zinc-500">{snapshot.bestStrategy ? `${snapshot.bestStrategy.healthStatus} · ${snapshot.bestStrategy.exposureStatus}` : "brak"}</div></div>
                     </div>
 
+                    <div className="grid gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800 xl:grid-cols-3">
+                      <div className="grid gap-2 text-sm">
+                        <div className="font-semibold">Plan</div>
+                        <div>Stawka: <strong>{currency(item.reconciliation.plannedStake)}</strong></div>
+                        <div>Kurs: <strong>{decimal(item.reconciliation.plannedOdds)}</strong></div>
+                        <div>Bukmacher: <strong>{item.reconciliation.plannedBookmaker ?? "—"}</strong></div>
+                        <div className="text-xs text-zinc-500">Snapshot {dateTime(item.reconciliation.capturedAt)}</div>
+                      </div>
+                      <div className="grid gap-2 text-sm">
+                        <div className="font-semibold">Faktycznie · źródło: Dziennik</div>
+                        <div>Stawka: <strong>{currency(item.reconciliation.actualStake)}</strong></div>
+                        <div>Kurs: <strong>{decimal(item.reconciliation.actualOdds)}</strong></div>
+                        <div>Bukmacher: <strong>{item.reconciliation.actualBookmaker ?? "—"}</strong></div>
+                        <div className="text-xs text-zinc-500">Zagrano {item.reconciliation.placedAt ? dateTime(item.reconciliation.placedAt) : "—"}</div>
+                      </div>
+                      <div className="grid gap-2 text-sm">
+                        <div className="font-semibold">Różnica i wynik</div>
+                        <div>Stawka: <strong>{currency(item.reconciliation.stakeDelta)}</strong> <span className="text-xs text-zinc-500">({signed(item.reconciliation.stakeDeltaPercent, 1)}%)</span></div>
+                        <div>Kurs: <strong>{signed(item.reconciliation.oddsDelta, 3)}</strong></div>
+                        <div>Opóźnienie: <strong>{item.reconciliation.executionDelayMinutes === null ? "—" : `${item.reconciliation.executionDelayMinutes} min`}</strong></div>
+                        <div>Wynik: <strong>{resultLabel(item.reconciliation.result)}</strong> · profit <strong>{currency(item.reconciliation.profit)}</strong> · CLV <strong>{percent(item.reconciliation.clv)}</strong></div>
+                      </div>
+                    </div>
+
+                    {item.status === "SKIPPED" ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                        <div className="font-semibold">Pominięto: {playPlanSkipReasonLabel(item.skipReasonCode) ?? "—"}</div>
+                        {item.skipNote ? <div className="mt-1">{item.skipNote}</div> : null}
+                        <div className="mt-1 text-xs opacity-75">{item.skippedAt ? dateTime(item.skippedAt) : "—"}</div>
+                      </div>
+                    ) : null}
+
                     {(assessment?.blockers.length || assessment?.warnings.length) ? (
                       <div className="grid gap-2 lg:grid-cols-2 text-sm">
                         {assessment.blockers.length ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-800 dark:border-red-900 dark:bg-red-950/20 dark:text-red-200">{assessment.blockers.map((value) => <div key={value}>• {value}</div>)}</div> : <div />}
@@ -282,7 +353,7 @@ export default async function PlayPlanPage({
                       </div>
                     ) : null}
 
-                    {plan.status === "DRAFT" && item.status !== "PLAYED" ? (
+                    {writable && plan.status === "DRAFT" && item.status === "SELECTED" ? (
                       <div className="grid gap-3">
                         <form action={updatePlayPlanItemAction} className="grid gap-3 md:grid-cols-4">
                           <input type="hidden" name="itemId" value={item.id} />
@@ -299,11 +370,22 @@ export default async function PlayPlanPage({
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-2">
-                        {plan.status === "APPROVED" && item.status !== "PLAYED" ? (
-                          <form action={markPlayPlanItemPlayedAction}>
-                            <input type="hidden" name="itemId" value={item.id} />
-                            <Button type="submit"><PlayCircle size={16} className="mr-2" />Oznacz jako zagrane</Button>
-                          </form>
+                        {writable && plan.status === "APPROVED" && item.status === "SELECTED" && !item.reconciliation.executed ? (
+                          <div className="grid w-full gap-3 xl:grid-cols-2">
+                            <form action={markPlayPlanItemPlayedAction} className="grid gap-3 rounded-lg border border-emerald-200 p-3 dark:border-emerald-900 sm:grid-cols-3">
+                              <input type="hidden" name="itemId" value={item.id} />
+                              <label className="grid gap-1 text-sm"><span className="text-zinc-500">Faktyczna stawka</span><Input name="actualStake" type="number" min="0.01" step="0.01" required defaultValue={item.plannedStake ?? ""} /></label>
+                              <label className="grid gap-1 text-sm"><span className="text-zinc-500">Faktyczny kurs</span><Input name="actualOdds" type="number" min="1.01" step="0.01" required defaultValue={item.oddsSnapshot ?? ""} /></label>
+                              <label className="grid gap-1 text-sm"><span className="text-zinc-500">Faktyczny bukmacher</span><Input name="actualBookmaker" defaultValue={item.bookmakerSnapshot ?? ""} /></label>
+                              <div className="sm:col-span-3"><Button type="submit"><PlayCircle size={16} className="mr-2" />Zapisz faktyczne zagranie</Button></div>
+                            </form>
+                            <form action={skipPlayPlanItemAction} className="grid gap-3 rounded-lg border border-amber-200 p-3 dark:border-amber-900">
+                              <input type="hidden" name="itemId" value={item.id} />
+                              <label className="grid gap-1 text-sm"><span className="text-zinc-500">Powód pominięcia</span><Select name="skipReasonCode" required defaultValue=""><option value="" disabled>Wybierz powód</option>{PLAY_PLAN_SKIP_REASONS.map((reason) => <option key={reason.code} value={reason.code}>{reason.label}</option>)}</Select></label>
+                              <label className="grid gap-1 text-sm"><span className="text-zinc-500">Notatka opcjonalna</span><Input name="skipNote" maxLength={1000} /></label>
+                              <div><Button type="submit" variant="secondary"><SkipForward size={16} className="mr-2" />Pomiń pozycję</Button></div>
+                            </form>
+                          </div>
                         ) : null}
                         <Link href={`/analysis?matchId=${snapshot.matchId}`} className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><ExternalLink size={15} className="mr-2" />Analiza meczu</Link>
                         <Link href="/journal" className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><BookOpen size={15} className="mr-2" />Dziennik</Link>
@@ -317,19 +399,19 @@ export default async function PlayPlanPage({
 
           <Card>
             <CardContent className="flex flex-wrap gap-2">
-              {plan.status === "DRAFT" ? (
+              {writable && plan.status === "DRAFT" ? (
                 <form action={approvePlayPlanAction}>
                   <input type="hidden" name="planId" value={plan.id} />
                   <Button type="submit" disabled={!evaluation.approvable}><CheckCircle2 size={16} className="mr-2" />Zatwierdź plan</Button>
                 </form>
               ) : null}
-              {plan.status === "APPROVED" ? (
+              {writable && plan.status === "APPROVED" && canReopen ? (
                 <form action={reopenPlayPlanAction}>
                   <input type="hidden" name="planId" value={plan.id} />
                   <Button type="submit" variant="secondary"><RotateCcw size={16} className="mr-2" />Wróć do edycji</Button>
                 </form>
               ) : null}
-              {plan.status !== "ARCHIVED" ? (
+              {writable && plan.status !== "ARCHIVED" ? (
                 <form action={archivePlayPlanAction}>
                   <input type="hidden" name="planId" value={plan.id} />
                   <Button type="submit" variant="ghost"><Archive size={16} className="mr-2" />Archiwizuj</Button>
