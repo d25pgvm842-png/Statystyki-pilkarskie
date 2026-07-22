@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
+import { PagePurpose } from "@/components/layout/page-purpose";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -81,7 +82,29 @@ export default async function DataQualityPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const leagueId = stringParam(params.leagueId);
+  const requestedSeasonId = stringParam(params.seasonId);
+  const providerCode = stringParam(params.providerCode);
+  const severity = stringParam(params.severity);
+  const type = stringParam(params.type);
+
+  const [leagues, allSeasons] = await Promise.all([
+    prisma.league.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    prisma.season.findMany({
+      include: { league: true },
+      orderBy: [{ active: "desc" }, { startsAt: "desc" }, { league: { name: "asc" } }],
+    }),
+  ]);
+  const availableSeasons = allSeasons.filter((season) => !leagueId || season.leagueId === leagueId);
+  const defaultSeason = availableSeasons.find((season) => season.active) ?? availableSeasons[0] ?? null;
+  const allHistory = requestedSeasonId === "ALL";
+  const seasonId = allHistory ? "" : requestedSeasonId || defaultSeason?.id || "";
+
   const matches = await prisma.match.findMany({
+    where: {
+      ...(seasonId ? { seasonId } : {}),
+      ...(leagueId && !seasonId ? { season: { leagueId } } : {}),
+    },
     include: {
       stats: true,
       dataSource: true,
@@ -96,12 +119,6 @@ export default async function DataQualityPage({
   const context = buildDataQualityContext(qualityMatches);
   const allIssues = findDataQualityIssues(qualityMatches, context);
   const sourceLimitedMatches = countSourceLimitedMatches(qualityMatches, context);
-
-  const leagueId = stringParam(params.leagueId);
-  const seasonId = stringParam(params.seasonId);
-  const providerCode = stringParam(params.providerCode);
-  const severity = stringParam(params.severity);
-  const type = stringParam(params.type);
 
   const profiles = context.profiles.filter((profile) => (
     (!leagueId || profile.leagueId === leagueId)
@@ -118,28 +135,24 @@ export default async function DataQualityPage({
 
   const errors = allIssues.filter((issue) => issue.severity === "error").length;
   const limitationProfiles = context.profiles.filter((profile) => profile.limitations.length > 0);
-  const leagues = [...new Map(qualityMatches.map((match) => [
-    match.season.league.id,
-    match.season.league,
-  ])).values()].sort((a, b) => a.name.localeCompare(b.name, "pl"));
-  const seasons = [...new Map(qualityMatches.map((match) => [match.season.id, match.season])).values()]
-    .filter((season) => !leagueId || season.leagueId === leagueId)
-    .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
+  const seasons = availableSeasons;
   const sources = [...new Map(context.profiles.map((profile) => [
     profile.providerCode ?? "unknown",
     { code: profile.providerCode ?? "unknown", name: profile.sourceName },
   ])).values()].sort((a, b) => a.name.localeCompare(b.name, "pl"));
   const issueTypes = [...new Set(allIssues.map((issue) => issue.type))].sort((a, b) => a.localeCompare(b, "pl"));
-  const filtersActive = Boolean(leagueId || seasonId || providerCode || severity || type);
+  const filtersActive = Boolean(leagueId || requestedSeasonId || providerCode || severity || type);
 
   return (
     <div className="grid gap-5">
       <div>
-        <h1 className="text-2xl font-semibold">Kontrola danych i pokrycia źródeł</h1>
-        <p className="text-sm text-zinc-500">
-          Prawdziwe błędy są oddzielone od pól, których dane źródło po prostu nie dostarcza.
-        </p>
+        <h1 className="text-2xl font-semibold">Dane</h1>
+        <p className="text-sm text-zinc-500">Sprawdź, czy mecze mają kompletne statystyki i czy źródło danych działa poprawnie.</p>
       </div>
+
+      <PagePurpose nextHref="/imports" nextLabel="Przejdź do importu">
+        Domyślnie analizowany jest aktywny sezon, dzięki czemu strona nie pobiera całej historii. Opcję „Cała historia” wybieraj tylko wtedy, gdy naprawdę jej potrzebujesz.
+      </PagePurpose>
 
       {sourceLimitedMatches > 0 ? (
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
@@ -179,9 +192,9 @@ export default async function DataQualityPage({
             <option value="">Wszystkie ligi</option>
             {leagues.map((league) => <option key={league.id} value={league.id}>{league.name}</option>)}
           </Select>
-          <Select name="seasonId" defaultValue={seasonId} aria-label="Sezon">
-            <option value="">Wszystkie sezony</option>
-            {seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}
+          <Select name="seasonId" defaultValue={allHistory ? "ALL" : seasonId} aria-label="Sezon">
+            <option value="ALL">Cała historia (wolniej)</option>
+            {seasons.map((season) => <option key={season.id} value={season.id}>{season.league.name} · {season.name}</option>)}
           </Select>
           <Select name="providerCode" defaultValue={providerCode} aria-label="Źródło">
             <option value="">Wszystkie źródła</option>

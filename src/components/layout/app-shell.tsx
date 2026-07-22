@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bot,
   BookOpen,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -15,6 +16,7 @@ import {
   FileUp,
   FlaskConical,
   Gauge,
+  GitCompareArrows,
   HardDriveDownload,
   ListChecks,
   LogOut,
@@ -24,12 +26,13 @@ import {
   Scale,
   Search,
   Settings,
-  Sparkles,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   Trophy,
   Users,
   WalletCards,
+  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -40,6 +43,7 @@ import {
   navigationGroupsForRole,
   pageTitleForPath,
   type NavigationGroup,
+  type NavigationItem,
 } from "@/components/layout/app-navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -73,6 +77,7 @@ const iconByName: Record<string, LucideIcon> = {
   journal: BookOpen,
   scanner: Search,
   recommendations: Sparkles,
+  comparison: GitCompareArrows,
   backtest: FlaskConical,
   strategies: ListChecks,
   portfolio: WalletCards,
@@ -86,7 +91,44 @@ const iconByName: Record<string, LucideIcon> = {
   automation: Bot,
   dataManagement: HardDriveDownload,
   settings: Settings,
+  advanced: Wrench,
+  administration: Settings,
 };
+
+function NavigationLink({
+  item,
+  pathname,
+  collapsed,
+  onNavigate,
+  nested = false,
+}: {
+  item: NavigationItem;
+  pathname: string;
+  collapsed: boolean;
+  onNavigate?: () => void;
+  nested?: boolean;
+}) {
+  const Icon = iconByName[item.icon] ?? Gauge;
+  const active = isNavigationItemActive(pathname, item.href);
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      title={collapsed ? item.label : undefined}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex h-10 items-center rounded-lg text-sm font-medium transition",
+        collapsed ? "justify-center px-2" : nested ? "gap-3 pl-6 pr-3" : "gap-3 px-3",
+        active
+          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300"
+          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
+      )}
+    >
+      <Icon size={18} className="shrink-0" />
+      <span className={cn("truncate", collapsed && "sr-only")}>{item.label}</span>
+    </Link>
+  );
+}
 
 function NavigationContent({
   groups,
@@ -100,42 +142,62 @@ function NavigationContent({
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
-      {groups.map((group) => (
-        <div key={group.label} className="grid gap-1">
-          <div
-            className={cn(
-              "px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400",
-              collapsed && "sr-only",
-            )}
-          >
-            {group.label}
-          </div>
-          {group.items.map((item) => {
-            const Icon = iconByName[item.icon] ?? Gauge;
-            const active = isNavigationItemActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onNavigate}
-                title={collapsed ? item.label : undefined}
-                aria-current={active ? "page" : undefined}
+    <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+      {groups.map((group) => {
+        const active = group.items.some((item) => isNavigationItemActive(pathname, item.href));
+        if (group.collapsible) {
+          const GroupIcon = iconByName[group.icon ?? "advanced"] ?? Wrench;
+          return (
+            <details key={`${group.label}:${active ? "active" : "idle"}`} open={active ? true : undefined} className="group/nav">
+              <summary
                 className={cn(
-                  "flex h-10 items-center rounded-lg text-sm font-medium transition",
+                  "flex h-10 cursor-pointer list-none items-center rounded-lg text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 [&::-webkit-details-marker]:hidden dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
                   collapsed ? "justify-center px-2" : "gap-3 px-3",
-                  active
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300"
-                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
                 )}
+                title={collapsed ? group.label : undefined}
               >
-                <Icon size={18} className="shrink-0" />
-                <span className={cn("truncate", collapsed && "sr-only")}>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+                <GroupIcon size={18} className="shrink-0" />
+                <span className={cn("min-w-0 flex-1 truncate", collapsed && "sr-only")}>{group.label}</span>
+                <ChevronDown size={15} className={cn("transition group-open/nav:rotate-180", collapsed && "hidden")} />
+              </summary>
+              <div className="mt-1 grid gap-1">
+                {group.items.map((item) => (
+                  <NavigationLink
+                    key={item.href}
+                    item={item}
+                    pathname={pathname}
+                    collapsed={collapsed}
+                    onNavigate={onNavigate}
+                    nested
+                  />
+                ))}
+              </div>
+            </details>
+          );
+        }
+
+        return (
+          <div key={group.label} className="grid gap-1">
+            <div
+              className={cn(
+                "px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400",
+                collapsed && "sr-only",
+              )}
+            >
+              {group.label}
+            </div>
+            {group.items.map((item) => (
+              <NavigationLink
+                key={item.href}
+                item={item}
+                pathname={pathname}
+                collapsed={collapsed}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        );
+      })}
     </nav>
   );
 }

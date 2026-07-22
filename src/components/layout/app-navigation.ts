@@ -9,49 +9,46 @@ export type NavigationItem = {
 
 export type NavigationGroup = {
   label: string;
+  icon?: string;
+  collapsible?: boolean;
   items: NavigationItem[];
 };
 
 const navigationGroups: NavigationGroup[] = [
   {
-    label: "Główne",
+    label: "Codzienna praca",
     items: [
-      { href: "/", label: "Dashboard", icon: "dashboard" },
+      { href: "/", label: "Dziś", icon: "dashboard" },
       { href: "/matches", label: "Mecze", icon: "matches" },
-      { href: "/analysis", label: "Analiza", icon: "analysis" },
-      { href: "/play-plan", label: "Plan gry", icon: "playPlan" },
+      { href: "/analysis", label: "Analiza meczu", icon: "analysis" },
       { href: "/journal", label: "Dziennik", icon: "journal" },
+      { href: "/data-quality", label: "Dane", icon: "dataQuality" },
     ],
   },
   {
-    label: "Decyzje i strategie",
+    label: "Zaawansowane",
+    icon: "advanced",
+    collapsible: true,
     items: [
-      { href: "/scanner", label: "Skaner", icon: "scanner" },
       { href: "/recommendations", label: "Centrum dnia", icon: "recommendations" },
+      { href: "/play-plan", label: "Plan gry", icon: "playPlan" },
+      { href: "/scanner", label: "Skaner", icon: "scanner" },
+      { href: "/comparison", label: "Porównanie drużyn", icon: "comparison" },
       { href: "/backtest", label: "Backtest", icon: "backtest" },
       { href: "/strategies", label: "Strategie", icon: "strategies" },
       { href: "/portfolio", label: "Portfel", icon: "portfolio" },
       { href: "/monitoring", label: "Nadzór", icon: "monitoring" },
-    ],
-  },
-  {
-    label: "Analityka",
-    items: [
       { href: "/trends", label: "Trendy", icon: "trends" },
       { href: "/ratings", label: "Rankingi", icon: "ratings" },
-    ],
-  },
-  {
-    label: "Dane",
-    items: [
       { href: "/teams", label: "Drużyny", icon: "teams" },
       { href: "/referees", label: "Sędziowie", icon: "referees" },
       { href: "/imports", label: "Import", icon: "imports" },
-      { href: "/data-quality", label: "Kontrola danych", icon: "dataQuality" },
     ],
   },
   {
     label: "Administracja",
+    icon: "administration",
+    collapsible: true,
     items: [
       { href: "/automation", label: "Automatyzacja", icon: "automation", adminOnly: true },
       { href: "/data-management", label: "Dane i kopie", icon: "dataManagement", adminOnly: true },

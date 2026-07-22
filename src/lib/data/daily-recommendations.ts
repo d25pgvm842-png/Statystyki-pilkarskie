@@ -118,10 +118,9 @@ export async function loadDailyRecommendations(input: {
   const hours = Math.max(6, Math.min(168, Math.floor(input.hours ?? 48)));
   const until = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
-  const [picks, plannedItems] = await Promise.all([
-    (prisma.analysisPick as unknown as {
-      findMany(args: unknown): Promise<DailyPickRecord[]>;
-    }).findMany({
+  const picks = await (prisma.analysisPick as unknown as {
+    findMany(args: unknown): Promise<DailyPickRecord[]>;
+  }).findMany({
     where: {
       userId: input.userId,
       status: { in: ["WATCHING", "PLAYED"] },
@@ -157,17 +156,21 @@ export async function loadDailyRecommendations(input: {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       },
     },
-      orderBy: [
-        { match: { kickoffAt: "asc" } },
-        { createdAt: "asc" },
-        { id: "asc" },
-      ],
-    }),
-    prisma.dailyPlayPlanItem.findMany({
-      where: { plan: { userId: input.userId } },
-      select: { analysisPickId: true },
-    }),
-  ]);
+    orderBy: [
+      { match: { kickoffAt: "asc" } },
+      { createdAt: "asc" },
+      { id: "asc" },
+    ],
+  });
+  const plannedItems = picks.length
+    ? await prisma.dailyPlayPlanItem.findMany({
+        where: {
+          plan: { userId: input.userId },
+          analysisPickId: { in: picks.map((item) => item.id) },
+        },
+        select: { analysisPickId: true },
+      })
+    : [];
   const plannedPickIds = new Set(plannedItems.map((item) => item.analysisPickId));
 
   const groupedSides = new Map<string, Set<string>>();

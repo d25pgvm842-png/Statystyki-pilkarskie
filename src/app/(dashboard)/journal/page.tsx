@@ -31,6 +31,7 @@ import {
 import { marketWorkshopStatusLabel, type MarketWorkshopStatus } from "@/lib/stats/market-workshop";
 import { TREND_STAT_DEFINITIONS } from "@/lib/stats/trends";
 import { formatNumber } from "@/lib/utils";
+import { PagePurpose } from "@/components/layout/page-purpose";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -205,8 +206,15 @@ export default async function JournalPage({
   const toText = dateTextParam(params.to);
   const from = utcDate(fromText);
   const to = nextUtcDay(toText);
+  const fullHistory = stringParam(params.range) === "all";
 
   const now = new Date();
+  const defaultFrom = new Date(now);
+  defaultFrom.setUTCHours(0, 0, 0, 0);
+  defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 90);
+  const defaultRangeActive = !fromText && !toText && !fullHistory;
+  const displayFromText = fromText || (defaultRangeActive ? defaultFrom.toISOString().slice(0, 10) : "");
+  const effectiveFrom = from ?? (defaultRangeActive ? defaultFrom : null);
   const future = new Date(now);
   future.setUTCDate(future.getUTCDate() + 90);
 
@@ -218,7 +226,7 @@ export default async function JournalPage({
       status,
       statKey,
       source,
-      from,
+      from: effectiveFrom,
       to,
     }),
     prisma.season.findMany({
@@ -250,9 +258,14 @@ export default async function JournalPage({
   if (status) query.set("status", status);
   if (statKey) query.set("statKey", statKey);
   if (source) query.set("source", source);
-  if (fromText) query.set("from", fromText);
+  if (displayFromText) query.set("from", displayFromText);
   if (toText) query.set("to", toText);
+  if (fullHistory) query.set("range", "all");
   const returnTo = `/journal${query.size ? `?${query.toString()}` : ""}`;
+  const allHistoryQuery = new URLSearchParams(query);
+  allHistoryQuery.delete("from");
+  allHistoryQuery.delete("to");
+  allHistoryQuery.set("range", "all");
   const analyticsQuery = new URLSearchParams(query);
   analyticsQuery.set("mode", "analytics");
   const { items, metrics, analytics } = journal;
@@ -302,6 +315,17 @@ export default async function JournalPage({
           </Link>
         </div>
       </div>
+
+      <PagePurpose nextHref="/matches" nextLabel="Wybierz mecz">
+        Dziennik służy do zapisania tego, co obserwujesz albo faktycznie zagrałeś. Plan gry, strategie i CLV są dodatkami — nie musisz ich używać w codziennej pracy.
+      </PagePurpose>
+
+      {defaultRangeActive ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <span>Ze względu na szybkość domyślnie pokazujemy ostatnie 90 dni.</span>
+          <Link href={`/journal?${allHistoryQuery.toString()}`} className="font-medium text-emerald-600 hover:underline">Pokaż całą historię</Link>
+        </div>
+      ) : null}
 
       {stringParam(params.saved) ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
@@ -430,7 +454,7 @@ export default async function JournalPage({
                 <option key={value} value={value}>{label}</option>
               ))}
             </Select>
-            <Input name="from" type="date" defaultValue={fromText} aria-label="Data od" />
+            <Input name="from" type="date" defaultValue={displayFromText} aria-label="Data od" />
             <Input name="to" type="date" defaultValue={toText} aria-label="Data do" />
             <div className="flex gap-2">
               <Button type="submit" className="flex-1">Filtruj</Button>

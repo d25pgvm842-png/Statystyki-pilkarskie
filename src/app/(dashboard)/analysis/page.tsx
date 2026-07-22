@@ -33,6 +33,7 @@ import {
 } from "@/lib/stats/market-workshop";
 import { TREND_STAT_DEFINITIONS, trendDefinition, type TrendStatKey } from "@/lib/stats/trends";
 import { formatNumber } from "@/lib/utils";
+import { PagePurpose } from "@/components/layout/page-purpose";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -218,6 +219,10 @@ export default async function MatchAnalysisPage({
           </Link>
         ) : null}
       </div>
+
+      <PagePurpose nextHref="/journal" nextLabel="Otwórz Dziennik">
+        Ten ekran odpowiada na jedno pytanie: jak wyglądają statystyki wybranego meczu. Zaawansowane linie i modele możesz pominąć — zacznij od formy, średnich i kompletności danych.
+      </PagePurpose>
 
       {stringParam(params.saved) === "1" ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">

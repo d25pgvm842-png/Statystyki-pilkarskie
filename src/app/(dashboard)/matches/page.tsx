@@ -1,8 +1,9 @@
 import Form from "next/form";
 import Link from "next/link";
-import { Eye, Pencil, PlusCircle, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Pencil, PlusCircle, Search, X } from "lucide-react";
 import type { Prisma } from "@/generated/prisma/client";
 import { MatchStatus } from "@/generated/prisma/enums";
+import { PagePurpose } from "@/components/layout/page-purpose";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,9 +17,11 @@ import { calculateMatchSummary } from "@/lib/stats/match-analytics";
 import { prisma } from "@/lib/db";
 import { formatNumber } from "@/lib/utils";
 import { requireUser } from "@/lib/auth";
+import { paginationHref, paginationState } from "@/lib/pagination";
 import { canWrite } from "@/lib/permissions";
 
 const validStatuses = new Set(Object.values(MatchStatus));
+const PAGE_SIZE = 50;
 
 function stringParam(value: string | string[] | undefined) {
   return typeof value === "string" ? value : "";
@@ -29,6 +32,7 @@ function dateBoundary(value: string, endOfDay = false) {
   const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`);
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
+
 
 export default async function MatchesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const [params, user] = await Promise.all([searchParams, requireUser()]);
@@ -57,43 +61,56 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     ...(from || to ? { kickoffAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
   };
 
-  const [allMatches, leagues, seasons, teams, referees] = await Promise.all([
-    prisma.match.findMany({
-      where,
-      include: {
-        season: { include: { league: true } },
-        homeTeam: true,
-        awayTeam: true,
-        referee: true,
-        stats: true,
-      },
-      orderBy: { kickoffAt: "desc" },
-    }),
+  const [totalMatches, leagues, seasons, teams, referees] = await Promise.all([
+    prisma.match.count({ where }),
     prisma.league.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.season.findMany({ where: leagueId ? { leagueId } : {}, include: { league: true }, orderBy: { startsAt: "desc" } }),
     prisma.team.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     prisma.referee.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
 
-  const matches = allMatches.slice(0, 100);
-  const summary = calculateMatchSummary(allMatches);
-  const metrics = new Map(summary.metrics.map((metric) => [metric.key, metric]));
+  const pagination = paginationState({
+    requestedPage: stringParam(params.page),
+    totalItems: totalMatches,
+    pageSize: PAGE_SIZE,
+  });
+  const { page, totalPages } = pagination;
+  const matches = await prisma.match.findMany({
+    where,
+    include: {
+      season: { include: { league: true } },
+      homeTeam: true,
+      awayTeam: true,
+      referee: true,
+      stats: true,
+    },
+    orderBy: [{ kickoffAt: "desc" }, { id: "desc" }],
+    skip: pagination.skip,
+    take: PAGE_SIZE,
+  });
 
-  const summaryCards = [
-    { label: "Mecze w filtrze", value: String(summary.matches), note: matches.length < allMatches.length ? "Tabela pokazuje 100 najnowszych" : "Wszystkie widoczne w tabeli" },
-    { label: "Kompletność statystyk", value: `${formatNumber(summary.completeness, 0)}%`, note: `${summary.matchesWithStats} meczów z danymi` },
-    { label: "Śr. rożnych", value: formatNumber(metrics.get("corners")?.average), note: `Próba ${metrics.get("corners")?.count ?? 0}` },
-    { label: "Śr. żółtych kartek", value: formatNumber(metrics.get("yellowCards")?.average), note: `Próba ${metrics.get("yellowCards")?.count ?? 0}` },
-    { label: "Śr. celnych strzałów", value: formatNumber(metrics.get("shotsOnTarget")?.average), note: `Próba ${metrics.get("shotsOnTarget")?.count ?? 0}` },
-    { label: "Śr. fauli", value: formatNumber(metrics.get("fouls")?.average), note: `Próba ${metrics.get("fouls")?.count ?? 0}` },
+  const summary = calculateMatchSummary(matches);
+  const metrics = new Map(summary.metrics.map((metric) => [metric.key, metric]));
+  const visibleFrom = pagination.from;
+  const visibleTo = pagination.to;
+
+  const primaryCards = [
+    { label: "Mecze znalezione", value: String(totalMatches), note: totalMatches ? `${visibleFrom}–${visibleTo} na tej stronie` : "Brak wyników" },
+    { label: "Kompletność strony", value: `${formatNumber(summary.completeness, 0)}%`, note: `${summary.matchesWithStats} z ${matches.length} ma statystyki` },
+    { label: "Śr. rożnych", value: formatNumber(metrics.get("corners")?.average), note: `Próba ${metrics.get("corners")?.count ?? 0} na stronie` },
+    { label: "Śr. żółtych", value: formatNumber(metrics.get("yellowCards")?.average), note: `Próba ${metrics.get("yellowCards")?.count ?? 0} na stronie` },
   ];
 
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-semibold">Mecze</h1><p className="text-sm text-zinc-500">Filtry, szybkie średnie oraz pełny podgląd każdego spotkania.</p></div>
+        <div><h1 className="text-2xl font-semibold">Mecze</h1><p className="text-sm text-zinc-500">Wybierz spotkanie, które chcesz obejrzeć albo przeanalizować.</p></div>
         {writable ? <Link href="/matches/new" data-requires-write className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-700"><PlusCircle size={16} className="mr-2" />Dodaj mecz</Link> : null}
       </div>
+
+      <PagePurpose nextHref="/analysis" nextLabel="Przejdź do analizy">
+        Najpierw znajdź mecz. Kliknij nazwę spotkania, aby zobaczyć dane, albo przejdź do „Analizy meczu”, aby porównać drużyny.
+      </PagePurpose>
 
       {deleted ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -115,9 +132,21 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         </Form>
       </CardContent></Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {summaryCards.map((item) => <Card key={item.label} className="p-4"><div className="text-xs text-zinc-500">{item.label}</div><div className="mt-1 text-2xl font-semibold">{item.value}</div><div className="mt-1 text-xs text-zinc-500">{item.note}</div></Card>)}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {primaryCards.map((item) => <Card key={item.label} className="p-4"><div className="text-xs text-zinc-500">{item.label}</div><div className="mt-1 text-2xl font-semibold">{item.value}</div><div className="mt-1 text-xs text-zinc-500">{item.note}</div></Card>)}
       </div>
+
+      <details className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <summary className="cursor-pointer text-sm font-medium">Więcej statystyk z obecnej strony</summary>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {([
+            { label: "Śr. celnych strzałów", metric: "shotsOnTarget" },
+            { label: "Śr. fauli", metric: "fouls" },
+            { label: "Śr. spalonych", metric: "offsides" },
+            { label: "Śr. wszystkich strzałów", metric: "shots" },
+          ] as const).map((item) => <div key={item.metric} className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">{item.label}</div><div className="mt-1 text-xl font-semibold">{formatNumber(metrics.get(item.metric)?.average)}</div><div className="text-xs text-zinc-500">n={metrics.get(item.metric)?.count ?? 0}</div></div>)}
+        </div>
+      </details>
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -143,6 +172,15 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 p-4 text-sm dark:border-zinc-800">
+            <div className="text-zinc-500">Strona {page} z {totalPages} · {totalMatches} meczów</div>
+            <div className="flex gap-2">
+              {page > 1 ? <Link href={paginationHref("/matches", params, page - 1)} className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"><ChevronLeft size={15} className="mr-1" />Poprzednia</Link> : null}
+              {page < totalPages ? <Link href={paginationHref("/matches", params, page + 1)} className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800">Następna<ChevronRight size={15} className="ml-1" /></Link> : null}
+            </div>
+          </div>
+        ) : null}
       </Card>
     </div>
   );
