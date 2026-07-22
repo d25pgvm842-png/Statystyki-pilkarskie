@@ -22,6 +22,23 @@ function dateParts(value: Date) {
   };
 }
 
+function parseDateKey(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (
+    check.getUTCFullYear() !== year
+    || check.getUTCMonth() + 1 !== month
+    || check.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
+}
+
 function warsawLocalToUtc(input: {
   year: number;
   month: number;
@@ -63,16 +80,30 @@ export function warsawDateKey(value: Date) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function warsawDayBounds(value: Date) {
-  const { year, month, day } = dateParts(value);
-  const following = new Date(Date.UTC(year, month - 1, day + 1));
+export function shiftWarsawDateKey(value: string, days: number) {
+  const parsed = parseDateKey(value);
+  if (!parsed || !Number.isInteger(days)) return null;
+  const shifted = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day + days));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
+}
+
+export function warsawDayBoundsFromKey(value: string) {
+  const parsed = parseDateKey(value);
+  if (!parsed) return null;
+  const following = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day + 1));
   return {
-    key: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-    start: warsawLocalToUtc({ year, month, day }),
+    key: value,
+    start: warsawLocalToUtc(parsed),
     end: warsawLocalToUtc({
       year: following.getUTCFullYear(),
       month: following.getUTCMonth() + 1,
       day: following.getUTCDate(),
     }),
   };
+}
+
+export function warsawDayBounds(value: Date) {
+  const bounds = warsawDayBoundsFromKey(warsawDateKey(value));
+  if (!bounds) throw new Error("Nie udało się wyznaczyć doby warszawskiej.");
+  return bounds;
 }

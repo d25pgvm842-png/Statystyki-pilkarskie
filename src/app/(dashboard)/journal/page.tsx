@@ -21,6 +21,7 @@ import {
   updateAnalysisPickAction,
 } from "@/lib/actions/analysis-journal-actions";
 import { requireUser } from "@/lib/auth";
+import { shiftWarsawDateKey, warsawDayBounds, warsawDayBoundsFromKey } from "@/lib/date-warsaw-day";
 import { loadAnalysisJournal } from "@/lib/data/analysis-journal";
 import { prisma } from "@/lib/db";
 import {
@@ -65,20 +66,7 @@ function stringParam(value: string | string[] | undefined) {
 
 function dateTextParam(value: string | string[] | undefined) {
   const text = stringParam(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
-  const parsed = new Date(`${text}T00:00:00.000Z`);
-  return Number.isNaN(parsed.getTime()) ? "" : text;
-}
-
-function utcDate(value: string) {
-  return value ? new Date(`${value}T00:00:00.000Z`) : null;
-}
-
-function nextUtcDay(value: string) {
-  const date = utcDate(value);
-  if (!date) return null;
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date;
+  return warsawDayBoundsFromKey(text) ? text : "";
 }
 
 function percent(value: number | null | undefined) {
@@ -97,6 +85,7 @@ function dateTime(value: Date) {
   return new Intl.DateTimeFormat("pl-PL", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Europe/Warsaw",
   }).format(value);
 }
 
@@ -204,16 +193,16 @@ export default async function JournalPage({
   const source = ["SCANNER", "MANUAL"].includes(sourceParam) ? sourceParam : null;
   const fromText = dateTextParam(params.from);
   const toText = dateTextParam(params.to);
-  const from = utcDate(fromText);
-  const to = nextUtcDay(toText);
+  const from = warsawDayBoundsFromKey(fromText)?.start ?? null;
+  const to = warsawDayBoundsFromKey(toText)?.end ?? null;
   const fullHistory = stringParam(params.range) === "all";
 
   const now = new Date();
-  const defaultFrom = new Date(now);
-  defaultFrom.setUTCHours(0, 0, 0, 0);
-  defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 90);
+  const today = warsawDayBounds(now);
+  const defaultFromText = shiftWarsawDateKey(today.key, -90) ?? today.key;
+  const defaultFrom = warsawDayBoundsFromKey(defaultFromText)?.start ?? today.start;
   const defaultRangeActive = !fromText && !toText && !fullHistory;
-  const displayFromText = fromText || (defaultRangeActive ? defaultFrom.toISOString().slice(0, 10) : "");
+  const displayFromText = fromText || (defaultRangeActive ? defaultFromText : "");
   const effectiveFrom = from ?? (defaultRangeActive ? defaultFrom : null);
   const future = new Date(now);
   future.setUTCDate(future.getUTCDate() + 90);

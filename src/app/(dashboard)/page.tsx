@@ -22,6 +22,7 @@ function dateTime(value: Date) {
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Europe/Warsaw",
   }).format(value);
 }
 
@@ -103,15 +104,17 @@ export default async function DashboardPage() {
       });
 
   const watching = picks.filter((item) => item.status === "WATCHING").length;
-  const played = picks.filter((item) => ["PLAYED", "SETTLED", "VOID"].includes(item.status)).length;
+  const playedOpen = picks.filter((item) => item.status === "PLAYED").length;
   const settled = picks.filter((item) => ["SETTLED", "VOID"].includes(item.status)).length;
   const skipped = plan?.items.filter((item) => item.status === "SKIPPED").length ?? 0;
   const planned = plan?.items.length ?? 0;
+  const todayMatchesHref = `/matches?dateFrom=${day.key}&dateTo=${day.key}`;
+  const todayJournalSuffix = `from=${day.key}&to=${day.key}`;
 
   const cards = [
-    { label: "Mecze dzisiaj", value: todayCount, note: "Wszystkie ligi", icon: CalendarDays, href: "/matches" },
-    { label: "Do przejrzenia", value: watching, note: "Zapisane obserwacje", icon: ListChecks, href: "/journal?status=WATCHING" },
-    { label: "Zagrane", value: played, note: settled ? `${settled} już rozliczonych` : "Brak rozliczonych", icon: PlayCircle, href: "/journal?status=PLAYED" },
+    { label: "Mecze dzisiaj", value: todayCount, note: "Wszystkie ligi", icon: CalendarDays, href: todayMatchesHref },
+    { label: "Do przejrzenia", value: watching, note: "Zapisane obserwacje", icon: ListChecks, href: `/journal?status=WATCHING&${todayJournalSuffix}` },
+    { label: "Zagrane otwarte", value: playedOpen, note: settled ? `${settled} rozliczonych dziś` : "Brak rozliczonych", icon: PlayCircle, href: `/journal?status=PLAYED&${todayJournalSuffix}` },
     { label: "Plan dnia", value: planned, note: `${planStatusLabel(plan?.status ?? null)}${skipped ? ` · ${skipped} pominięte` : ""}`, icon: CheckCircle2, href: "/play-plan" },
   ] as const;
 
@@ -157,7 +160,7 @@ export default async function DashboardPage() {
                 <CardTitle>{todayMatches.length ? "Dzisiejsze mecze" : "Najbliższe mecze"}</CardTitle>
                 <p className="mt-1 text-sm text-zinc-500">Otwórz analizę bez przechodzenia przez dodatkowe moduły.</p>
               </div>
-              <Link href="/matches" className="inline-flex items-center text-sm font-medium text-emerald-600 hover:underline">Wszystkie <ArrowRight size={14} className="ml-1" /></Link>
+              <Link href={todayMatches.length ? todayMatchesHref : "/matches"} className="inline-flex items-center text-sm font-medium text-emerald-600 hover:underline">Wszystkie <ArrowRight size={14} className="ml-1" /></Link>
             </div>
           </CardHeader>
           <CardContent className="grid gap-2">
@@ -192,7 +195,7 @@ export default async function DashboardPage() {
               {latestImport ? (
                 <Link href={`/imports/${latestImport.id}`} className="rounded-lg bg-zinc-50 p-3 hover:bg-zinc-100 dark:bg-zinc-950 dark:hover:bg-zinc-800">
                   <div className="flex items-center gap-2 font-medium"><FileUp size={16} className="text-emerald-600" />{latestImport.fileName}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{latestImport.status} · {new Intl.DateTimeFormat("pl-PL", { dateStyle: "short", timeStyle: "short" }).format(latestImport.createdAt)}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{latestImport.status} · {new Intl.DateTimeFormat("pl-PL", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" }).format(latestImport.createdAt)}</div>
                 </Link>
               ) : <div className="text-zinc-500">Brak importów.</div>}
               <Link href="/data-quality" className="inline-flex items-center font-medium text-emerald-600 hover:underline"><Clock3 size={15} className="mr-2" />Sprawdź kompletność danych</Link>

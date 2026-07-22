@@ -96,14 +96,22 @@ export default async function DataQualityPage({
     }),
   ]);
   const availableSeasons = allSeasons.filter((season) => !leagueId || season.leagueId === leagueId);
-  const defaultSeason = availableSeasons.find((season) => season.active) ?? availableSeasons[0] ?? null;
-  const allHistory = requestedSeasonId === "ALL";
-  const seasonId = allHistory ? "" : requestedSeasonId || defaultSeason?.id || "";
+  const requestedSeasonExists = availableSeasons.some((season) => season.id === requestedSeasonId);
+  const seasonMode = requestedSeasonId === "ALL" || requestedSeasonId === "ACTIVE" || requestedSeasonExists
+    ? requestedSeasonId || "ACTIVE"
+    : "ACTIVE";
+  const activeSeasonIds = availableSeasons.filter((season) => season.active).map((season) => season.id);
+  const fallbackSeasonId = availableSeasons[0]?.id;
+  const seasonIds = seasonMode === "ALL"
+    ? []
+    : seasonMode === "ACTIVE"
+      ? (activeSeasonIds.length ? activeSeasonIds : fallbackSeasonId ? [fallbackSeasonId] : [])
+      : [seasonMode];
 
   const matches = await prisma.match.findMany({
     where: {
-      ...(seasonId ? { seasonId } : {}),
-      ...(leagueId && !seasonId ? { season: { leagueId } } : {}),
+      ...(seasonIds.length ? { seasonId: { in: seasonIds } } : {}),
+      ...(leagueId && !seasonIds.length ? { season: { leagueId } } : {}),
     },
     include: {
       stats: true,
@@ -121,14 +129,10 @@ export default async function DataQualityPage({
   const sourceLimitedMatches = countSourceLimitedMatches(qualityMatches, context);
 
   const profiles = context.profiles.filter((profile) => (
-    (!leagueId || profile.leagueId === leagueId)
-    && (!seasonId || profile.seasonId === seasonId)
-    && (!providerCode || (profile.providerCode ?? "unknown") === providerCode)
+    !providerCode || (profile.providerCode ?? "unknown") === providerCode
   ));
   const issues = allIssues.filter((issue) => (
-    (!leagueId || issue.leagueId === leagueId)
-    && (!seasonId || issue.seasonId === seasonId)
-    && (!providerCode || (issue.providerCode ?? "unknown") === providerCode)
+    (!providerCode || (issue.providerCode ?? "unknown") === providerCode)
     && (!severity || issue.severity === severity)
     && (!type || issue.type === type)
   ));
@@ -141,7 +145,13 @@ export default async function DataQualityPage({
     { code: profile.providerCode ?? "unknown", name: profile.sourceName },
   ])).values()].sort((a, b) => a.name.localeCompare(b.name, "pl"));
   const issueTypes = [...new Set(allIssues.map((issue) => issue.type))].sort((a, b) => a.localeCompare(b, "pl"));
-  const filtersActive = Boolean(leagueId || requestedSeasonId || providerCode || severity || type);
+  const filtersActive = Boolean(
+    leagueId
+    || (requestedSeasonId && requestedSeasonId !== "ACTIVE")
+    || providerCode
+    || severity
+    || type,
+  );
 
   return (
     <div className="grid gap-5">
@@ -151,7 +161,7 @@ export default async function DataQualityPage({
       </div>
 
       <PagePurpose nextHref="/imports" nextLabel="Przejdź do importu">
-        Domyślnie analizowany jest aktywny sezon, dzięki czemu strona nie pobiera całej historii. Opcję „Cała historia” wybieraj tylko wtedy, gdy naprawdę jej potrzebujesz.
+        Domyślnie analizowane są aktywne sezony wszystkich lig, dzięki czemu strona nie pobiera całej historii. Opcję „Cała historia” wybieraj tylko wtedy, gdy naprawdę jej potrzebujesz.
       </PagePurpose>
 
       {sourceLimitedMatches > 0 ? (
@@ -192,7 +202,8 @@ export default async function DataQualityPage({
             <option value="">Wszystkie ligi</option>
             {leagues.map((league) => <option key={league.id} value={league.id}>{league.name}</option>)}
           </Select>
-          <Select name="seasonId" defaultValue={allHistory ? "ALL" : seasonId} aria-label="Sezon">
+          <Select name="seasonId" defaultValue={seasonMode} aria-label="Sezon">
+            <option value="ACTIVE">Aktywne sezony</option>
             <option value="ALL">Cała historia (wolniej)</option>
             {seasons.map((season) => <option key={season.id} value={season.id}>{season.league.name} · {season.name}</option>)}
           </Select>

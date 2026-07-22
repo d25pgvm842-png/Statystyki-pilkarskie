@@ -17,6 +17,7 @@ import { calculateMatchSummary } from "@/lib/stats/match-analytics";
 import { prisma } from "@/lib/db";
 import { formatNumber } from "@/lib/utils";
 import { requireUser } from "@/lib/auth";
+import { warsawDayBoundsFromKey } from "@/lib/date-warsaw-day";
 import { paginationHref, paginationState } from "@/lib/pagination";
 import { canWrite } from "@/lib/permissions";
 
@@ -28,9 +29,8 @@ function stringParam(value: string | string[] | undefined) {
 }
 
 function dateBoundary(value: string, endOfDay = false) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  const bounds = warsawDayBoundsFromKey(value);
+  return bounds ? (endOfDay ? bounds.end : bounds.start) : undefined;
 }
 
 
@@ -58,7 +58,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     ...(refereeId ? { refereeId } : {}),
     ...(status ? { status } : {}),
     ...(round ? { round } : {}),
-    ...(from || to ? { kickoffAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    ...(from || to ? { kickoffAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } } : {}),
   };
 
   const [totalMatches, leagues, seasons, teams, referees] = await Promise.all([
