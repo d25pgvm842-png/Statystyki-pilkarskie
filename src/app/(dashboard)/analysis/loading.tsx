@@ -1,13 +1,13 @@
 import { RouteLoading } from "@/components/layout/route-loading";
 
-export default function MatchesLoading() {
+export default function AnalysisLoading() {
   return (
     <RouteLoading
-      label="Ładowanie meczów"
-      titleWidth="w-40"
+      label="Ładowanie analizy meczu"
+      titleWidth="w-56"
       metricCount={4}
       actionCount={1}
-      contentHeight="h-96"
+      contentHeight="h-[30rem]"
     />
   );
 }
