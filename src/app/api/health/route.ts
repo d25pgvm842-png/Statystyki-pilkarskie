@@ -1,41 +1,20 @@
-import packageJson from "../../../../package.json";
-import { prisma } from "@/lib/db";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
-function json(body: Record<string, unknown>, status = 200) {
-  return Response.json(body, {
-    status,
-    headers: {
-      "Cache-Control": "no-store, max-age=0",
-    },
-  });
-}
-
-export async function GET() {
-  const startedAt = Date.now();
-
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-
-    return json({
+export function GET() {
+  return NextResponse.json(
+    {
       status: "ok",
-      database: "ok",
-      version: packageJson.version,
-      responseTimeMs: Date.now() - startedAt,
+      application: "Staty piłkarskie",
+      version: "0.32.0",
       timestamp: new Date().toISOString(),
-    });
-  } catch {
-    return json(
-      {
-        status: "degraded",
-        database: "error",
-        version: packageJson.version,
-        responseTimeMs: Date.now() - startedAt,
-        timestamp: new Date().toISOString(),
+    },
+    {
+      status: 200,
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
       },
-      503,
-    );
-  }
+    },
+  );
 }
