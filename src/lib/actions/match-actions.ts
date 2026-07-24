@@ -125,8 +125,7 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
   if (!parsed.success) return { message: "Popraw oznaczone pola.", errors: parsed.error.flatten().fieldErrors };
   if (!parsed.data.matchId) return { message: "Brak identyfikatora meczu." };
 
-  const relationError = await validateRelations(parsed.data, parsed.data.matchId);
-  if (relationError) return { message: relationError };
+  let changedFields: string[] = [];
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -136,6 +135,58 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
         include: { stats: true },
       });
       if (!existing) throw new Error("MATCH_MISSING");
+
+      const seasonOrTeamsChanged = (
+        existing.seasonId !== parsed.data.seasonId
+        || existing.homeTeamId !== parsed.data.homeTeamId
+        || existing.awayTeamId !== parsed.data.awayTeamId
+      );
+      const refereeChanged = (
+        existing.refereeId !== parsed.data.refereeId
+        || existing.seasonId !== parsed.data.seasonId
+      );
+      const identityChanged = (
+        seasonOrTeamsChanged
+        || existing.kickoffAt.getTime() !== parsed.data.kickoffAt.getTime()
+      );
+
+      if (seasonOrTeamsChanged) {
+        const memberships = await tx.seasonTeam.count({
+          where: {
+            seasonId: parsed.data.seasonId,
+            teamId: {
+              in: [parsed.data.homeTeamId, parsed.data.awayTeamId],
+            },
+          },
+        });
+        if (memberships !== 2) throw new Error("MATCH_TEAMS_INVALID");
+      }
+
+      if (parsed.data.refereeId && refereeChanged) {
+        const assignment = await tx.refereeSeason.findUnique({
+          where: {
+            refereeId_seasonId: {
+              refereeId: parsed.data.refereeId,
+              seasonId: parsed.data.seasonId,
+            },
+          },
+        });
+        if (!assignment) throw new Error("MATCH_REFEREE_INVALID");
+      }
+
+      if (identityChanged) {
+        const duplicate = await tx.match.findFirst({
+          where: {
+            seasonId: parsed.data.seasonId,
+            homeTeamId: parsed.data.homeTeamId,
+            awayTeamId: parsed.data.awayTeamId,
+            kickoffAt: parsed.data.kickoffAt,
+            id: { not: parsed.data.matchId! },
+          },
+          select: { id: true },
+        });
+        if (duplicate) throw new Error("MATCH_DUPLICATE");
+      }
 
       const oldValues: Record<string, unknown> = {
         seasonId: existing.seasonId,
@@ -166,6 +217,7 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
       const changes = Object.keys(newValues).filter(
         (key) => valueToString(oldValues[key]) !== valueToString(newValues[key]),
       );
+      changedFields = changes;
 
       await tx.match.update({
         where: { id: parsed.data.matchId! },
@@ -191,11 +243,15 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
             entityId: parsed.data.matchId!,
             action: "UPDATE",
             userId: user.id,
-            changes: { create: changes.map((fieldName) => ({
-              fieldName,
-              oldValue: valueToString(oldValues[fieldName]),
-              newValue: valueToString(newValues[fieldName]),
-            })) },
+            changes: {
+              createMany: {
+                data: changes.map((fieldName) => ({
+                  fieldName,
+                  oldValue: valueToString(oldValues[fieldName]),
+                  newValue: valueToString(newValues[fieldName]),
+                })),
+              },
+            },
           },
         });
 
@@ -212,7 +268,16 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
       }
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "MATCH_MISSING") return { message: "Mecz nie istnieje." };
+    if (error instanceof Error) {
+      if (error.message === "MATCH_MISSING") return { message: "Mecz nie istnieje." };
+      if (error.message === "MATCH_TEAMS_INVALID") {
+        return { message: "Obie drużyny muszą należeć do wybranego sezonu." };
+      }
+      if (error.message === "MATCH_REFEREE_INVALID") {
+        return { message: "Sędzia nie jest przypisany do wybranego sezonu." };
+      }
+      if (error.message === "MATCH_DUPLICATE") return { message: "Taki mecz już istnieje." };
+    }
 
     console.error("updateMatchAction failed", {
       matchId: parsed.data.matchId,
@@ -224,10 +289,15 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
     return { message: "Nie udało się zaktualizować meczu." };
   }
 
-  revalidatePath("/");
-  revalidatePath("/matches");
+  const metadataChanged = changedFields.some(
+    (field) => !(statFields as readonly string[]).includes(field),
+  );
+
+  if (metadataChanged) {
+    revalidatePath("/");
+    revalidatePath("/matches");
+  }
   revalidatePath(`/matches/${parsed.data.matchId}`);
-  revalidatePath(`/matches/${parsed.data.matchId}/edit`);
   redirect(`/matches/${parsed.data.matchId}`);
 }
 

@@ -46,6 +46,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
       where: { entityType: AuditEntityType.MATCH, entityId: id },
       include: { user: { select: { name: true } }, changes: { orderBy: { fieldName: "asc" } } },
       orderBy: { createdAt: "desc" },
+      take: 50,
     }),
   ]);
 
