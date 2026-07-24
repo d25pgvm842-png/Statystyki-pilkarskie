@@ -14,5 +14,7 @@ export async function lockTransactionResource(
   id: string,
 ) {
   const key = transactionLockKey(resource, id);
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+  await tx.$queryRaw<Array<{ lock: string | null }>>`
+    SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text AS "lock"
+  `;
 }
