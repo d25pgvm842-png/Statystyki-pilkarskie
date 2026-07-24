@@ -1,6 +1,8 @@
-export const APP_VERSION = "0.32.1";
+import packageJson from "../../package.json";
 
-type PublicRuntimeEnvironment = Record<string, string | undefined>;
+export const APP_VERSION = packageJson.version;
+
+export type PublicRuntimeEnvironment = Record<string, string | undefined>;
 
 function shortCommit(value: string | undefined) {
   const normalized = value?.trim();

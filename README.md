@@ -37,13 +37,16 @@ npm run dev
 ## Sprawdzenie jakości
 
 ```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
+npm run verify
 ```
 
-Te same kontrole wykonuje GitHub Actions po każdym pushu.
+Komenda wykonuje kolejno Prisma generate, typecheck, lint, testy i build. CI dodatkowo uruchamia testy atomowości PostgreSQL.
+
+## Diagnostyka wydania
+
+- `/api/health` — lekki test działania aplikacji, bez połączenia z bazą.
+- `/api/ready` — test gotowości aplikacji i PostgreSQL.
+- `npm run release:check` — kontrola wdrożonej wersji, commita i bazy.
 
 ## Najważniejsze moduły
 
@@ -71,6 +74,7 @@ Przykładowy plik znajduje się w `public/templates/matches-import.csv`.
 
 - `docs/ARCHITECTURE.md` — architektura i decyzje.
 - `docs/PLAN_REALIZACJI.md` — kolejne etapy.
+- `docs/RELEASE_PACKAGES.md` — kontrakt bezpiecznych paczek.
 - `prisma/schema.prisma` — model bazy.
 - `src/lib/actions` — zapis danych i import.
 - `src/lib/stats` — obliczenia.
@@ -91,7 +95,6 @@ Przykładowy plik znajduje się w `public/templates/matches-import.csv`.
 
 Sprint 1.4B domyka produkcyjny przepływ importu CSV: zatwierdzanie do bazy, ponowne sprawdzanie duplikatów, pomijanie pojedynczych wierszy, zachowanie anulowanych importów, eksport raportu oraz pełny audyt każdego utworzonego meczu.
 
-
 ## Wdrożenie online
 
-Projekt jest przygotowany do Vercel i zarządzanego PostgreSQL. Instrukcja: `docs/WDROZENIE_VERCEL.md`. Stan bazy można sprawdzić pod `/api/health`.
+Projekt jest przygotowany do Vercel i zarządzanego PostgreSQL. Instrukcja: `docs/WDROZENIE_VERCEL.md`. Stan procesu sprawdza `/api/health`, a gotowość bazy `/api/ready`.

@@ -1,0 +1,39 @@
+name: Release health
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: npm
+
+      - name: Pin npm
+        run: npm install --global npm@11.6.2 --no-audit --no-fund
+
+      - name: Install release checker
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Check deployed release
+        run: npm run release:check
+        env:
+          RELEASE_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url }}
+          EXPECTED_COMMIT: ${{ github.event.deployment.sha }}
+          EXPECTED_ENVIRONMENT: production

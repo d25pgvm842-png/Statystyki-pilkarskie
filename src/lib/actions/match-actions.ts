@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { lockTransactionResource } from "@/lib/transaction-locks";
 import { valueToString } from "@/lib/utils";
 import { matchFormSchema, type MatchFormData } from "@/lib/validation/match";
+import { createManualOverrideWritePlan } from "@/lib/matches/manual-overrides";
 
 export type MatchActionState = {
   message?: string;
@@ -198,15 +199,28 @@ export async function updateMatchAction(_: MatchActionState, formData: FormData)
           },
         });
 
-        await Promise.all(changes.map((fieldName) => tx.dataOverride.upsert({
-          where: { matchId_fieldName: { matchId: parsed.data.matchId!, fieldName } },
-          update: { createdById: user.id },
-          create: { matchId: parsed.data.matchId!, fieldName, createdById: user.id, reason: "Ręczna edycja" },
-        })));
+        const overridePlan = createManualOverrideWritePlan(
+          parsed.data.matchId!,
+          user.id,
+          changes,
+        );
+
+        if (overridePlan) {
+          await tx.dataOverride.updateMany(overridePlan.update);
+          await tx.dataOverride.createMany(overridePlan.create);
+        }
       }
     });
   } catch (error) {
     if (error instanceof Error && error.message === "MATCH_MISSING") return { message: "Mecz nie istnieje." };
+
+    console.error("updateMatchAction failed", {
+      matchId: parsed.data.matchId,
+      error: error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : String(error),
+    });
+
     return { message: "Nie udało się zaktualizować meczu." };
   }
 

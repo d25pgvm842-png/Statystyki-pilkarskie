@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { APP_VERSION, createHealthPayload } from "./release-health";
 
+test("wersja wydania ma poprawny format", () => {
+  assert.match(APP_VERSION, /^\d+\.\d+\.\d+$/);
+});
+
 test("buduje stabilny publiczny kontrakt health", () => {
   const payload = createHealthPayload(
     new Date("2026-07-23T08:15:30.000Z"),
