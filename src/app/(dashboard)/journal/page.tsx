@@ -22,7 +22,7 @@ import {
 } from "@/lib/actions/analysis-journal-actions";
 import { requireUser } from "@/lib/auth";
 import { shiftWarsawDateKey, warsawDayBounds, warsawDayBoundsFromKey } from "@/lib/date-warsaw-day";
-import { loadAnalysisJournal } from "@/lib/data/analysis-journal";
+import { loadAnalysisJournalPage } from "@/lib/data/analysis-journal";
 import { prisma } from "@/lib/db";
 import {
   selectionClv,
@@ -198,6 +198,11 @@ export default async function JournalPage({
   const from = warsawDayBoundsFromKey(fromText)?.start ?? null;
   const to = warsawDayBoundsFromKey(toText)?.end ?? null;
   const fullHistory = stringParam(params.range) === "all";
+  const requestedPage = Number.parseInt(stringParam(params.page), 10);
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? requestedPage
+    : 1;
+  const pageSize = 50;
 
   const now = new Date();
   const today = warsawDayBounds(now);
@@ -210,7 +215,7 @@ export default async function JournalPage({
   future.setUTCDate(future.getUTCDate() + 90);
 
   const [journal, seasons, leagues, upcomingMatches] = await Promise.all([
-    loadAnalysisJournal({
+    loadAnalysisJournalPage({
       userId: user.id,
       seasonId,
       leagueId,
@@ -219,6 +224,8 @@ export default async function JournalPage({
       source,
       from: effectiveFrom,
       to,
+      page,
+      pageSize,
     }),
     prisma.season.findMany({
       where: { league: { active: true } },
@@ -252,14 +259,32 @@ export default async function JournalPage({
   if (displayFromText) query.set("from", displayFromText);
   if (toText) query.set("to", toText);
   if (fullHistory) query.set("range", "all");
-  const returnTo = `/journal${query.size ? `?${query.toString()}` : ""}`;
+  const pageHref = (targetPage: number) => {
+    const pageQuery = new URLSearchParams(query);
+
+    if (targetPage > 1) {
+      pageQuery.set("page", String(targetPage));
+    } else {
+      pageQuery.delete("page");
+    }
+
+    return `/journal${pageQuery.size ? `?${pageQuery.toString()}` : ""}`;
+  };
+  const returnTo = pageHref(journal.pagination.page);
   const allHistoryQuery = new URLSearchParams(query);
   allHistoryQuery.delete("from");
   allHistoryQuery.delete("to");
   allHistoryQuery.set("range", "all");
   const analyticsQuery = new URLSearchParams(query);
   analyticsQuery.set("mode", "analytics");
-  const { items, metrics, analytics } = journal;
+  const {
+    items,
+    metrics,
+    analytics,
+    pagination,
+    analyticsTruncated,
+    analyticsLimit,
+  } = journal;
 
   return (
     <div className="grid gap-5">
@@ -322,6 +347,12 @@ export default async function JournalPage({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
           <span>Ze względu na szybkość domyślnie pokazujemy ostatnie 90 dni.</span>
           <Link href={`/journal?${allHistoryQuery.toString()}`} className="font-medium text-emerald-600 hover:underline">Pokaż całą historię</Link>
+        </div>
+      ) : null}
+
+      {analyticsTruncated ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          Analityka obejmuje {analyticsLimit.toLocaleString("pl-PL")} najnowszych pozycji pasujących do filtrów. Lista i pełny eksport nadal obejmują całą historię.
         </div>
       ) : null}
 
@@ -605,6 +636,49 @@ export default async function JournalPage({
           </Card>
         ) : null}
       </div>
+
+      {pagination.totalItems > 0 ? (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span className="text-zinc-500">
+              Pozycje {(pagination.page - 1) * pagination.pageSize + 1}–
+              {Math.min(
+                pagination.page * pagination.pageSize,
+                pagination.totalItems,
+              )} z {pagination.totalItems.toLocaleString("pl-PL")}
+            </span>
+            <div className="flex items-center gap-2">
+              {pagination.hasPreviousPage ? (
+                <Link
+                  href={pageHref(pagination.page - 1)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 px-3 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  Poprzednia
+                </Link>
+              ) : (
+                <span className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-3 text-zinc-400 dark:border-zinc-800">
+                  Poprzednia
+                </span>
+              )}
+              <span className="px-2 font-medium">
+                {pagination.page} / {pagination.totalPages}
+              </span>
+              {pagination.hasNextPage ? (
+                <Link
+                  href={pageHref(pagination.page + 1)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 px-3 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  Następna
+                </Link>
+              ) : (
+                <span className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-3 text-zinc-400 dark:border-zinc-800">
+                  Następna
+                </span>
+              )}
+            </div>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }
