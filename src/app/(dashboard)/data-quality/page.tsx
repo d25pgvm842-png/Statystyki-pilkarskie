@@ -24,7 +24,9 @@ import {
   type SourceCapabilityProfile,
   type StatField,
 } from "@/lib/data/data-quality";
+import { loadDataQualityMatches } from "@/lib/data/data-quality-report";
 import { prisma } from "@/lib/db";
+import { normalizeDataQualityPagination } from "@/lib/data-quality/data-quality-pagination";
 
 function stringParam(value: string | string[] | undefined) {
   return typeof value === "string" ? value : "";
@@ -87,6 +89,14 @@ export default async function DataQualityPage({
   const providerCode = stringParam(params.providerCode);
   const severity = stringParam(params.severity);
   const type = stringParam(params.type);
+  const requestedPage = Number.parseInt(
+    stringParam(params.page),
+    10,
+  );
+  const page = Number.isFinite(requestedPage)
+    && requestedPage > 0
+    ? requestedPage
+    : 1;
 
   const [leagues, allSeasons] = await Promise.all([
     prisma.league.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
@@ -108,22 +118,15 @@ export default async function DataQualityPage({
       ? (activeSeasonIds.length ? activeSeasonIds : fallbackSeasonId ? [fallbackSeasonId] : [])
       : [seasonMode];
 
-  const matches = await prisma.match.findMany({
-    where: {
-      ...(seasonIds.length ? { seasonId: { in: seasonIds } } : {}),
-      ...(leagueId && !seasonIds.length ? { season: { leagueId } } : {}),
-    },
-    include: {
-      stats: true,
-      dataSource: true,
-      season: { include: { league: true } },
-      homeTeam: true,
-      awayTeam: true,
-    },
-    orderBy: { kickoffAt: "desc" },
+  const qualityReport = await loadDataQualityMatches({
+    seasonIds,
+    leagueId: leagueId && !seasonIds.length
+      ? leagueId
+      : null,
   });
 
-  const qualityMatches: QualityMatch[] = matches;
+  const qualityMatches: QualityMatch[] =
+    qualityReport.matches;
   const context = buildDataQualityContext(qualityMatches);
   const allIssues = findDataQualityIssues(qualityMatches, context);
   const sourceLimitedMatches = countSourceLimitedMatches(qualityMatches, context);
@@ -136,6 +139,15 @@ export default async function DataQualityPage({
     && (!severity || issue.severity === severity)
     && (!type || issue.type === type)
   ));
+  const pagination = normalizeDataQualityPagination({
+    requestedPage: page,
+    requestedPageSize: 50,
+    totalItems: issues.length,
+  });
+  const paginatedIssues = issues.slice(
+    pagination.skip,
+    pagination.skip + pagination.pageSize,
+  );
 
   const errors = allIssues.filter((issue) => issue.severity === "error").length;
   const limitationProfiles = context.profiles.filter((profile) => profile.limitations.length > 0);
@@ -152,6 +164,22 @@ export default async function DataQualityPage({
     || severity
     || type,
   );
+  const pageHref = (targetPage: number) => {
+    const query = new URLSearchParams();
+
+    if (leagueId) query.set("leagueId", leagueId);
+    query.set("seasonId", seasonMode);
+    if (providerCode) {
+      query.set("providerCode", providerCode);
+    }
+    if (severity) query.set("severity", severity);
+    if (type) query.set("type", type);
+    if (targetPage > 1) {
+      query.set("page", String(targetPage));
+    }
+
+    return `/data-quality?${query.toString()}`;
+  };
 
   return (
     <div className="grid gap-5">
@@ -163,6 +191,18 @@ export default async function DataQualityPage({
       <PagePurpose nextHref="/imports" nextLabel="Przejdź do importu">
         Domyślnie analizowane są aktywne sezony wszystkich lig, dzięki czemu strona nie pobiera całej historii. Opcję „Cała historia” wybieraj tylko wtedy, gdy naprawdę jej potrzebujesz.
       </PagePurpose>
+
+      {qualityReport.truncated ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <div className="font-medium">Osiągnięto limit bezpieczeństwa</div>
+            <div className="mt-0.5 text-xs">
+              Przeanalizowano {qualityReport.scanLimit.toLocaleString("pl-PL")} najnowszych meczów z {qualityReport.totalMatches.toLocaleString("pl-PL")}. Wybierz konkretny sezon, aby otrzymać pełny raport.
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {sourceLimitedMatches > 0 ? (
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
@@ -311,7 +351,7 @@ export default async function DataQualityPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {issues.map((issue) => (
+              {paginatedIssues.map((issue) => (
                 <tr key={issue.key}>
                   <td className="p-3">
                     <Badge className={issue.severity === "error"
@@ -335,13 +375,56 @@ export default async function DataQualityPage({
                   </td>
                 </tr>
               ))}
-              {!issues.length ? (
+              {!paginatedIssues.length ? (
                 <tr><td colSpan={6} className="p-10 text-center text-zinc-500">Nie wykryto problemów dla wybranych filtrów.</td></tr>
               ) : null}
             </tbody>
           </table>
         </div>
       </Card>
+
+      {pagination.totalItems > 0 ? (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span className="text-zinc-500">
+              Problemy {(pagination.page - 1) * pagination.pageSize + 1}–
+              {Math.min(
+                pagination.page * pagination.pageSize,
+                pagination.totalItems,
+              )} z {pagination.totalItems.toLocaleString("pl-PL")}
+            </span>
+            <div className="flex items-center gap-2">
+              {pagination.hasPreviousPage ? (
+                <Link
+                  href={pageHref(pagination.page - 1)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 px-3 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  Poprzednia
+                </Link>
+              ) : (
+                <span className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-3 text-zinc-400 dark:border-zinc-800">
+                  Poprzednia
+                </span>
+              )}
+              <span className="px-2 font-medium">
+                {pagination.page} / {pagination.totalPages}
+              </span>
+              {pagination.hasNextPage ? (
+                <Link
+                  href={pageHref(pagination.page + 1)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 px-3 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                >
+                  Następna
+                </Link>
+              ) : (
+                <span className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-3 text-zinc-400 dark:border-zinc-800">
+                  Następna
+                </span>
+              )}
+            </div>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }
