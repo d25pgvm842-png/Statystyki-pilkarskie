@@ -1,9 +1,10 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
+import { REFERENCE_DATA_CACHE_TAGS } from "@/lib/data/reference-data-tags";
 
 export const REFERENCE_DATA_REVALIDATE_SECONDS = 300;
 
-const REFERENCE_DATA_TAG = "reference-data";
+const REFERENCE_DATA_TAG = REFERENCE_DATA_CACHE_TAGS.all;
 
 export const getCachedActiveLeagues = unstable_cache(
   async () => prisma.league.findMany({
@@ -21,7 +22,7 @@ export const getCachedActiveLeagues = unstable_cache(
   ["reference-data-active-leagues-v1"],
   {
     revalidate: REFERENCE_DATA_REVALIDATE_SECONDS,
-    tags: [REFERENCE_DATA_TAG, "reference-data-leagues"],
+    tags: [REFERENCE_DATA_TAG, REFERENCE_DATA_CACHE_TAGS.leagues],
   },
 );
 
@@ -50,7 +51,7 @@ export const getCachedSeasons = unstable_cache(
   ["reference-data-seasons-v1"],
   {
     revalidate: REFERENCE_DATA_REVALIDATE_SECONDS,
-    tags: [REFERENCE_DATA_TAG, "reference-data-seasons"],
+    tags: [REFERENCE_DATA_TAG, REFERENCE_DATA_CACHE_TAGS.seasons],
   },
 );
 
@@ -69,7 +70,7 @@ export const getCachedActiveTeams = unstable_cache(
   ["reference-data-active-teams-v1"],
   {
     revalidate: REFERENCE_DATA_REVALIDATE_SECONDS,
-    tags: [REFERENCE_DATA_TAG, "reference-data-teams"],
+    tags: [REFERENCE_DATA_TAG, REFERENCE_DATA_CACHE_TAGS.teams],
   },
 );
 
@@ -88,6 +89,6 @@ export const getCachedActiveReferees = unstable_cache(
   ["reference-data-active-referees-v1"],
   {
     revalidate: REFERENCE_DATA_REVALIDATE_SECONDS,
-    tags: [REFERENCE_DATA_TAG, "reference-data-referees"],
+    tags: [REFERENCE_DATA_TAG, REFERENCE_DATA_CACHE_TAGS.referees],
   },
 );
