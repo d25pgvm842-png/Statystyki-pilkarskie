@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { getCachedSeasons } from "@/lib/data/reference-data";
 import { prisma } from "@/lib/db";
 import { measureServerOperation } from "@/lib/performance/measure-server-operation";
 import { groupRefereeMatches } from "@/lib/referees/group-referee-matches";
@@ -19,10 +20,7 @@ export default async function RefereesPage({
   searchParams: Promise<{ seasonId?: string; lookback?: string }>;
 }) {
   const { seasonId, lookback: lookbackParam } = await searchParams;
-  const seasons = await prisma.season.findMany({
-    include: { league: true },
-    orderBy: [{ active: "desc" }, { startsAt: "desc" }],
-  });
+  const seasons = await getCachedSeasons();
   const selectedSeasonId = seasons.some((season) => season.id === seasonId)
     ? seasonId
     : seasons.find((season) => season.active)?.id ?? seasons[0]?.id;

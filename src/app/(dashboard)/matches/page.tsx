@@ -14,6 +14,13 @@ import {
   MATCH_STATUS_LABELS,
 } from "@/lib/matches/presentation";
 import { calculateMatchSummary } from "@/lib/stats/match-analytics";
+import {
+  getCachedActiveLeagues,
+  getCachedActiveReferees,
+  getCachedActiveTeams,
+  getCachedSeasons,
+} from "@/lib/data/reference-data";
+import { filterReferenceSeasonsByLeague } from "@/lib/data/reference-data-filters";
 import { prisma } from "@/lib/db";
 import { formatNumber } from "@/lib/utils";
 import { requireUser } from "@/lib/auth";
@@ -61,13 +68,23 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     ...(from || to ? { kickoffAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } } : {}),
   };
 
-  const [totalMatches, leagues, seasons, teams, referees] = await Promise.all([
+  const [
+    totalMatches,
+    leagues,
+    allSeasons,
+    teams,
+    referees,
+  ] = await Promise.all([
     prisma.match.count({ where }),
-    prisma.league.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.season.findMany({ where: leagueId ? { leagueId } : {}, include: { league: true }, orderBy: { startsAt: "desc" } }),
-    prisma.team.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.referee.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    getCachedActiveLeagues(),
+    getCachedSeasons(),
+    getCachedActiveTeams(),
+    getCachedActiveReferees(),
   ]);
+  const seasons = filterReferenceSeasonsByLeague(
+    allSeasons,
+    leagueId,
+  );
 
   const pagination = paginationState({
     requestedPage: stringParam(params.page),

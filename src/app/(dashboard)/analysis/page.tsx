@@ -20,6 +20,8 @@ import { saveMarketWorkshopPickAction } from "@/lib/actions/market-workshop-acti
 import { requireUser } from "@/lib/auth";
 import { loadMatchAnalysis, type AnalysisLookback } from "@/lib/data/match-analysis";
 import { loadMarketWorkshop } from "@/lib/data/market-workshop";
+import { getCachedSeasons } from "@/lib/data/reference-data";
+import { filterReferenceSeasonsByActiveLeague } from "@/lib/data/reference-data-filters";
 import { prisma } from "@/lib/db";
 import { marketStrengthBucketLabel } from "@/lib/stats/market-ratings";
 import { opponentStrengthQualityLabel } from "@/lib/stats/opponent-strength";
@@ -113,11 +115,9 @@ export default async function MatchAnalysisPage({
 }) {
   const params = await searchParams;
   const user = await requireUser();
-  const seasons = await prisma.season.findMany({
-    where: { league: { active: true } },
-    include: { league: true },
-    orderBy: [{ active: "desc" }, { startsAt: "desc" }],
-  });
+  const seasons = filterReferenceSeasonsByActiveLeague(
+    await getCachedSeasons(),
+  );
   const selectedSeason =
     seasons.find((season) => season.id === stringParam(params.seasonId))
     ?? seasons.find((season) => season.active)

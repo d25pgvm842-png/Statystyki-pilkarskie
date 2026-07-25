@@ -25,7 +25,10 @@ import {
   type StatField,
 } from "@/lib/data/data-quality";
 import { loadDataQualityMatches } from "@/lib/data/data-quality-report";
-import { prisma } from "@/lib/db";
+import {
+  getCachedActiveLeagues,
+  getCachedSeasons,
+} from "@/lib/data/reference-data";
 import { normalizeDataQualityPagination } from "@/lib/data-quality/data-quality-pagination";
 
 function stringParam(value: string | string[] | undefined) {
@@ -99,11 +102,8 @@ export default async function DataQualityPage({
     : 1;
 
   const [leagues, allSeasons] = await Promise.all([
-    prisma.league.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-    prisma.season.findMany({
-      include: { league: true },
-      orderBy: [{ active: "desc" }, { startsAt: "desc" }, { league: { name: "asc" } }],
-    }),
+    getCachedActiveLeagues(),
+    getCachedSeasons(),
   ]);
   const availableSeasons = allSeasons.filter((season) => !leagueId || season.leagueId === leagueId);
   const requestedSeasonExists = availableSeasons.some((season) => season.id === requestedSeasonId);
