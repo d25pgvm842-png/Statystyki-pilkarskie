@@ -16,6 +16,7 @@ import { requireUser } from "@/lib/auth";
 import { warsawDayBounds } from "@/lib/date-warsaw-day";
 import { prisma } from "@/lib/db";
 import { canWrite } from "@/lib/permissions";
+import { measureServerOperation } from "@/lib/performance/measure-server-operation";
 
 const matchDateTimeFormatter = new Intl.DateTimeFormat("pl-PL", {
   weekday: "short",
@@ -48,68 +49,75 @@ export default async function DashboardPage() {
   const day = warsawDayBounds(now);
   const planDate = new Date(`${day.key}T00:00:00.000Z`);
 
-  const [todayCount, todayMatches, picks, plan, latestImport] = await Promise.all([
-    prisma.match.count({
-      where: { kickoffAt: { gte: day.start, lt: day.end } },
-    }),
-    prisma.match.findMany({
-      where: { kickoffAt: { gte: day.start, lt: day.end } },
-      select: {
-        id: true,
-        kickoffAt: true,
-        status: true,
-        homeScore: true,
-        awayScore: true,
-        homeTeam: { select: { name: true } },
-        awayTeam: { select: { name: true } },
-        season: { select: { name: true, league: { select: { name: true } } } },
-      },
-      orderBy: { kickoffAt: "asc" },
-      take: 8,
-    }),
-    prisma.analysisPick.findMany({
-      where: {
-        userId: user.id,
-        match: { kickoffAt: { gte: day.start, lt: day.end } },
-      },
-      select: { status: true },
-    }),
-    prisma.dailyPlayPlan.findUnique({
-      where: { userId_planDate: { userId: user.id, planDate } },
-      select: {
-        id: true,
-        status: true,
-        items: {
+  const [todayCount, todayMatches, picks, plan, latestImport] =
+    await measureServerOperation(
+      "load-dashboard-primary-data",
+      () => Promise.all([
+        prisma.match.count({
+          where: { kickoffAt: { gte: day.start, lt: day.end } },
+        }),
+        prisma.match.findMany({
+          where: { kickoffAt: { gte: day.start, lt: day.end } },
           select: {
+            id: true,
+            kickoffAt: true,
             status: true,
-            analysisPick: { select: { status: true, result: true, stake: true } },
+            homeScore: true,
+            awayScore: true,
+            homeTeam: { select: { name: true } },
+            awayTeam: { select: { name: true } },
+            season: { select: { name: true, league: { select: { name: true } } } },
           },
-        },
-      },
-    }),
-    prisma.importBatch.findFirst({
-      select: { id: true, fileName: true, status: true, createdAt: true },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+          orderBy: { kickoffAt: "asc" },
+          take: 8,
+        }),
+        prisma.analysisPick.findMany({
+          where: {
+            userId: user.id,
+            match: { kickoffAt: { gte: day.start, lt: day.end } },
+          },
+          select: { status: true },
+        }),
+        prisma.dailyPlayPlan.findUnique({
+          where: { userId_planDate: { userId: user.id, planDate } },
+          select: {
+            id: true,
+            status: true,
+            items: {
+              select: {
+                status: true,
+                analysisPick: { select: { status: true, result: true, stake: true } },
+              },
+            },
+          },
+        }),
+        prisma.importBatch.findFirst({
+          select: { id: true, fileName: true, status: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+        }),
+      ]),
+    );
 
   const displayedMatches = todayMatches.length
     ? todayMatches
-    : await prisma.match.findMany({
-        where: { kickoffAt: { gte: now } },
-        select: {
-          id: true,
-          kickoffAt: true,
-          status: true,
-          homeScore: true,
-          awayScore: true,
-          homeTeam: { select: { name: true } },
-          awayTeam: { select: { name: true } },
-          season: { select: { name: true, league: { select: { name: true } } } },
-        },
-        orderBy: { kickoffAt: "asc" },
-        take: 8,
-      });
+    : await measureServerOperation(
+        "load-dashboard-upcoming-matches",
+        () => prisma.match.findMany({
+          where: { kickoffAt: { gte: now } },
+          select: {
+            id: true,
+            kickoffAt: true,
+            status: true,
+            homeScore: true,
+            awayScore: true,
+            homeTeam: { select: { name: true } },
+            awayTeam: { select: { name: true } },
+            season: { select: { name: true, league: { select: { name: true } } } },
+          },
+          orderBy: { kickoffAt: "asc" },
+          take: 8,
+        }),
+      );
 
   const watching = picks.filter((item) => item.status === "WATCHING").length;
   const playedOpen = picks.filter((item) => item.status === "PLAYED").length;

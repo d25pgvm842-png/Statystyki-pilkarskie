@@ -27,6 +27,7 @@ import { requireUser } from "@/lib/auth";
 import { warsawDayBoundsFromKey } from "@/lib/date-warsaw-day";
 import { paginationHref, paginationState } from "@/lib/pagination";
 import { canWrite } from "@/lib/permissions";
+import { measureServerOperation } from "@/lib/performance/measure-server-operation";
 
 const validStatuses = new Set(Object.values(MatchStatus));
 const PAGE_SIZE = 50;
@@ -74,13 +75,16 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     allSeasons,
     teams,
     referees,
-  ] = await Promise.all([
-    prisma.match.count({ where }),
-    getCachedActiveLeagues(),
-    getCachedSeasons(),
-    getCachedActiveTeams(),
-    getCachedActiveReferees(),
-  ]);
+  ] = await measureServerOperation(
+    "load-matches-filters-and-count",
+    () => Promise.all([
+      prisma.match.count({ where }),
+      getCachedActiveLeagues(),
+      getCachedSeasons(),
+      getCachedActiveTeams(),
+      getCachedActiveReferees(),
+    ]),
+  );
   const seasons = filterReferenceSeasonsByLeague(
     allSeasons,
     leagueId,
@@ -92,19 +96,22 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     pageSize: PAGE_SIZE,
   });
   const { page, totalPages } = pagination;
-  const matches = await prisma.match.findMany({
-    where,
-    include: {
-      season: { include: { league: true } },
-      homeTeam: true,
-      awayTeam: true,
-      referee: true,
-      stats: true,
-    },
-    orderBy: [{ kickoffAt: "desc" }, { id: "desc" }],
-    skip: pagination.skip,
-    take: PAGE_SIZE,
-  });
+  const matches = await measureServerOperation(
+    "load-matches-page",
+    () => prisma.match.findMany({
+      where,
+      include: {
+        season: { include: { league: true } },
+        homeTeam: true,
+        awayTeam: true,
+        referee: true,
+        stats: true,
+      },
+      orderBy: [{ kickoffAt: "desc" }, { id: "desc" }],
+      skip: pagination.skip,
+      take: PAGE_SIZE,
+    }),
+  );
 
   const summary = calculateMatchSummary(matches);
   const metrics = new Map(summary.metrics.map((metric) => [metric.key, metric]));
