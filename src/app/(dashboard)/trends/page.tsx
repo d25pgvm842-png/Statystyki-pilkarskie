@@ -133,6 +133,7 @@ export default async function TrendsPage({
             stats: true,
           },
           orderBy: { kickoffAt: "desc" },
+          ...(limit ? { take: limit } : {}),
         }),
         prisma.customLine.findMany({
           where: { userId: user.id },

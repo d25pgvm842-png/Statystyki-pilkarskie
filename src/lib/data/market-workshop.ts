@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { loadSeasonAnalysisDataset } from "@/lib/data/season-analysis-dataset";
+import { measureServerOperation } from "@/lib/performance/measure-server-operation";
 import {
   buildMarketWorkshop,
   type MarketWorkshopTarget,
@@ -15,63 +17,46 @@ export async function loadMarketWorkshop(input: {
   overOdds?: number | null;
   underOdds?: number | null;
 }) {
-  const match = await prisma.match.findUnique({
-    where: { id: input.matchId },
-    include: {
-      homeTeam: true,
-      awayTeam: true,
-      season: {
-        include: {
-          league: true,
-          teams: {
-            include: { team: true },
-            orderBy: { team: { name: "asc" } },
+  return measureServerOperation("load-market-workshop", async () => {
+    const match = await prisma.match.findUnique({
+      where: { id: input.matchId },
+      include: {
+        homeTeam: true,
+        awayTeam: true,
+        season: {
+          include: {
+            league: true,
           },
         },
       },
-    },
-  });
-  if (!match) return null;
+    });
+    if (!match) return null;
 
-  const matches = await prisma.match.findMany({
-    where: {
+    const dataset = await loadSeasonAnalysisDataset({
       seasonId: match.seasonId,
-      status: "FINISHED",
-      kickoffAt: { lt: match.kickoffAt },
-    },
-    select: {
-      id: true,
-      kickoffAt: true,
-      homeTeamId: true,
-      awayTeamId: true,
-      stats: true,
-    },
-    orderBy: { kickoffAt: "desc" },
-  });
-
-  const teams = match.season.teams.map((membership: {
-    team: { id: string; name: string; shortName: string | null };
-  }) => ({
-    id: membership.team.id,
-    name: membership.team.name,
-    shortName: membership.team.shortName,
-  }));
-
-  return {
-    match,
-    workshop: buildMarketWorkshop({
-      teams,
-      matches,
-      statKey: input.statKey,
-      target: input.target,
-      line: input.line,
-      homeTeamId: match.homeTeamId,
-      awayTeamId: match.awayTeamId,
-      lookback: input.lookback,
-      minSample: 3,
       before: match.kickoffAt,
-      overOdds: input.overOdds,
-      underOdds: input.underOdds,
-    }),
-  };
+    });
+    if (!dataset) return null;
+
+    return {
+      match: {
+        ...match,
+        season: dataset.season,
+      },
+      workshop: buildMarketWorkshop({
+        teams: dataset.teams,
+        matches: [...dataset.matches].reverse(),
+        statKey: input.statKey,
+        target: input.target,
+        line: input.line,
+        homeTeamId: match.homeTeamId,
+        awayTeamId: match.awayTeamId,
+        lookback: input.lookback,
+        minSample: 3,
+        before: match.kickoffAt,
+        overOdds: input.overOdds,
+        underOdds: input.underOdds,
+      }),
+    };
+  });
 }

@@ -255,9 +255,11 @@ model Match {
 
   @@unique([seasonId, homeTeamId, awayTeamId, kickoffAt])
   @@index([seasonId, kickoffAt])
+  @@index([seasonId, status, kickoffAt])
   @@index([homeTeamId, kickoffAt])
   @@index([awayTeamId, kickoffAt])
   @@index([refereeId])
+  @@index([refereeId, status, kickoffAt])
   @@unique([dataSourceId, sourceExternalId])
 }
 
@@ -342,6 +344,7 @@ model AuditLog {
   createdAt   DateTime        @default(now())
 
   @@index([entityType, entityId])
+  @@index([entityType, entityId, createdAt])
   @@index([createdAt])
 }
 
@@ -352,6 +355,8 @@ model AuditChange {
   oldValue   String?
   newValue   String?
   auditLog   AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+
+  @@index([auditLogId, fieldName])
 }
 
 model CustomLine {

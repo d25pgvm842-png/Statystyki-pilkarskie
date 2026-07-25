@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { loadSeasonAnalysisDataset } from "@/lib/data/season-analysis-dataset";
 import {
   buildOpponentStrengthProfile,
   type OpponentStrengthProfile,
@@ -13,49 +13,6 @@ import {
   type TrendStatKey,
 } from "@/lib/stats/trends";
 
-async function loadDataset(input: {
-  seasonId: string;
-  before?: Date | string | null;
-}) {
-  const season = await prisma.season.findUnique({
-    where: { id: input.seasonId },
-    include: {
-      league: true,
-      teams: {
-        include: { team: true },
-        orderBy: { team: { name: "asc" } },
-      },
-    },
-  });
-  if (!season) return null;
-
-  const matches = await prisma.match.findMany({
-    where: {
-      seasonId: input.seasonId,
-      status: "FINISHED",
-      ...(input.before ? { kickoffAt: { lt: new Date(input.before) } } : {}),
-    },
-    select: {
-      id: true,
-      kickoffAt: true,
-      homeTeamId: true,
-      awayTeamId: true,
-      stats: true,
-    },
-    orderBy: { kickoffAt: "asc" },
-  });
-
-  return {
-    season,
-    teams: season.teams.map((membership) => ({
-      id: membership.team.id,
-      name: membership.team.name,
-      shortName: membership.team.shortName,
-    })),
-    matches,
-  };
-}
-
 export async function loadTeamOpponentStrength(input: {
   seasonId: string;
   teamId: string;
@@ -65,8 +22,11 @@ export async function loadTeamOpponentStrength(input: {
   lookback: RatingLookback;
   minSample?: number;
 }) {
-  const dataset = await loadDataset({ seasonId: input.seasonId });
+  const dataset = await loadSeasonAnalysisDataset({
+    seasonId: input.seasonId,
+  });
   if (!dataset) return null;
+
   const team = dataset.teams.find((item) => item.id === input.teamId);
   if (!team) return null;
 
@@ -101,7 +61,10 @@ export async function loadMatchOpponentStrength(input: {
   lookback: RatingLookback;
   minSample?: number;
 }): Promise<MatchOpponentStrengthRow[]> {
-  const dataset = await loadDataset({ seasonId: input.seasonId, before: input.before });
+  const dataset = await loadSeasonAnalysisDataset({
+    seasonId: input.seasonId,
+    before: input.before,
+  });
   if (!dataset) return [];
 
   return TREND_STAT_DEFINITIONS.map((definition) => ({
