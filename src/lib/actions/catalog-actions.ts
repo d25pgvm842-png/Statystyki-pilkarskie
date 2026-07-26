@@ -1,13 +1,9 @@
 "use server";
 
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdminUser } from "@/lib/auth";
-import {
-  referenceDataTagsForMutation,
-  type ReferenceDataMutation,
-} from "@/lib/data/reference-data-tags";
 
 function slugify(value: string) {
   return value
@@ -28,12 +24,6 @@ function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
 
-function updateReferenceDataCache(mutation: ReferenceDataMutation) {
-  for (const tag of referenceDataTagsForMutation(mutation)) {
-    updateTag(tag);
-  }
-}
-
 export async function createLeagueAction(formData: FormData) {
   await requireAdmin();
   const name = text(formData, "name");
@@ -42,7 +32,6 @@ export async function createLeagueAction(formData: FormData) {
   if (!name || !country || !code) throw new Error("Uzupełnij nazwę, kraj i kod ligi.");
 
   await prisma.league.create({ data: { name, country, code, slug: slugify(name) } });
-  updateReferenceDataCache("league-created");
   revalidatePath("/settings");
   redirect("/settings?ok=league");
 }
@@ -62,7 +51,6 @@ export async function createSeasonAction(formData: FormData) {
     }
     await tx.season.create({ data: { leagueId, name, startsAt, endsAt, active: formData.get("active") === "on" } });
   });
-  updateReferenceDataCache("season-changed");
   revalidatePath("/settings");
   redirect("/settings?ok=season");
 }
@@ -85,7 +73,6 @@ export async function createTeamAction(formData: FormData) {
     update: {},
     create: { seasonId, teamId: team.id },
   });
-  updateReferenceDataCache("team-changed");
   revalidatePath("/settings");
   revalidatePath("/teams");
   redirect("/settings?ok=team");
@@ -107,7 +94,6 @@ export async function createRefereeAction(formData: FormData) {
     update: {},
     create: { refereeId: referee.id, seasonId },
   });
-  updateReferenceDataCache("referee-changed");
   revalidatePath("/settings");
   revalidatePath("/referees");
   redirect("/settings?ok=referee");
@@ -118,7 +104,6 @@ export async function toggleLeagueAction(formData: FormData) {
   const id = text(formData, "id");
   const active = text(formData, "active") === "true";
   await prisma.league.update({ where: { id }, data: { active: !active } });
-  updateReferenceDataCache("league-visibility-changed");
   revalidatePath("/settings");
 }
 
@@ -133,7 +118,6 @@ export async function setActiveSeasonAction(formData: FormData) {
     prisma.season.update({ where: { id }, data: { active: true } }),
   ]);
 
-  updateReferenceDataCache("season-changed");
   revalidatePath("/");
   revalidatePath("/settings");
   revalidatePath("/matches");
@@ -148,7 +132,6 @@ export async function toggleTeamAction(formData: FormData) {
   const id = text(formData, "id");
   const active = text(formData, "active") === "true";
   await prisma.team.update({ where: { id }, data: { active: !active } });
-  updateReferenceDataCache("team-changed");
   revalidatePath("/");
   revalidatePath("/settings");
   revalidatePath("/teams");
@@ -160,7 +143,6 @@ export async function toggleRefereeAction(formData: FormData) {
   const id = text(formData, "id");
   const active = text(formData, "active") === "true";
   await prisma.referee.update({ where: { id }, data: { active: !active } });
-  updateReferenceDataCache("referee-changed");
   revalidatePath("/settings");
   revalidatePath("/referees");
   revalidatePath("/matches");
