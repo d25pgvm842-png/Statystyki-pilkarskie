@@ -48,6 +48,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { canWrite } from "@/lib/permissions";
+import {
+  safeReadBrowserStorage,
+  safeWriteBrowserStorage,
+} from "@/lib/browser/safe-browser-storage";
 
 const SIDEBAR_STORAGE_KEY = "staty-sidebar-collapsed";
 const SIDEBAR_EVENT = "staty-sidebar-change";
@@ -62,7 +66,10 @@ function subscribeSidebar(callback: () => void) {
 }
 
 function getSidebarSnapshot() {
-  return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+  return safeReadBrowserStorage(
+    () => window.localStorage,
+    SIDEBAR_STORAGE_KEY,
+  ) === "1";
 }
 
 function getSidebarServerSnapshot() {
@@ -232,7 +239,11 @@ export function AppShell({
   }, [mobileOpen]);
 
   function toggleCollapsed() {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? "0" : "1");
+    safeWriteBrowserStorage(
+      () => window.localStorage,
+      SIDEBAR_STORAGE_KEY,
+      collapsed ? "0" : "1",
+    );
     window.dispatchEvent(new Event(SIDEBAR_EVENT));
   }
 

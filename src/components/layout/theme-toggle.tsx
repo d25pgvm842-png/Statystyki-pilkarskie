@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { safeWriteBrowserStorage } from "@/lib/browser/safe-browser-storage";
 
 const STORAGE_KEY = "staty-theme";
 const THEME_EVENT = "staty-theme-change";
@@ -27,7 +28,11 @@ export function ThemeToggle() {
     const nextDark = !dark;
     document.documentElement.classList.toggle("dark", nextDark);
     document.documentElement.style.colorScheme = nextDark ? "dark" : "light";
-    window.localStorage.setItem(STORAGE_KEY, nextDark ? "dark" : "light");
+    safeWriteBrowserStorage(
+      () => window.localStorage,
+      STORAGE_KEY,
+      nextDark ? "dark" : "light",
+    );
     window.dispatchEvent(new Event(THEME_EVENT));
   }
 
