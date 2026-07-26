@@ -197,6 +197,15 @@ export default async function MatchAnalysisPage({
   if (workshopBookmaker) currentParams.set("workshopBookmaker", workshopBookmaker);
   if (workshopNote) currentParams.set("workshopNote", workshopNote);
   const returnTo = `/analysis?${currentParams.toString()}`;
+  const recommendedLineHref = workshop?.lineRecommendation
+    ? (() => {
+        const query = new URLSearchParams(currentParams);
+        query.set("workshopLine", String(workshop.lineRecommendation.line));
+        query.delete("workshopOverOdds");
+        query.delete("workshopUnderOdds");
+        return `/analysis?${query.toString()}`;
+      })()
+    : null;
 
   return (
     <div className="grid gap-5">
@@ -473,6 +482,35 @@ export default async function MatchAnalysisPage({
                     <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Próba i pokrycie</div><div className="mt-1 text-xl font-semibold">n={workshop.effectiveSample} · {formatNumber(workshop.coverage, 0)}%</div><div className="text-xs text-zinc-500">{marketWorkshopConfidenceLabel(workshop.confidence)}</div></div>
                     <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950"><div className="text-xs text-zinc-500">Marża bukmachera</div><div className="mt-1 text-xl font-semibold">{percent(workshop.bookmakerMargin)}</div><div className="text-xs text-zinc-500">{workshop.modelVersion}</div></div>
                   </div>
+
+                  {workshop.lineRecommendation ? (
+                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+                      <div>
+                        <div className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-300">Linia najbliższa 50/50</div>
+                        <div className="mt-1 text-2xl font-semibold">{workshop.lineRecommendation.line}</div>
+                        <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                          Over {percent(workshop.lineRecommendation.overProbability)} · fair {formatNumber(workshop.lineRecommendation.overFairOdds, 2)}
+                          {" · "}
+                          Under {percent(workshop.lineRecommendation.underProbability)} · fair {formatNumber(workshop.lineRecommendation.underFairOdds, 2)}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          Odchylenie od idealnego balansu: {formatNumber(workshop.lineRecommendation.balanceGap, 1)} pp. To wynik rozkładu empirycznego, nie gwarancja.
+                        </div>
+                      </div>
+                      {recommendedLineHref ? (
+                        <Link
+                          href={recommendedLineHref}
+                          className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-700"
+                        >
+                          Ustaw tę linię
+                        </Link>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                      Za mało danych, aby zaproponować linię 50/50.
+                    </div>
+                  )}
 
                   <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
                     <table className="w-full min-w-[1120px] text-sm">

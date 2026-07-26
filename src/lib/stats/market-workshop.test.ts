@@ -8,6 +8,7 @@ import {
   impliedProbability,
   isHalfLine,
   marketWorkshopStatus,
+  recommendBalancedHalfLine,
   removeMarketMargin,
 } from "@/lib/stats/market-workshop";
 import type { RatingMatch } from "@/lib/stats/market-ratings";
@@ -134,4 +135,41 @@ test("silnik nie używa meczów z przyszłości i nie zamienia braków na zero",
   assert.equal(result.homeSample, 1);
   assert.equal(result.awaySample, 1);
   assert.equal(result.distributionSize, 1);
+});
+
+
+test("rekomenduje linię połówkową z idealnym balansem 50 na 50", () => {
+  const result = recommendBalancedHalfLine({
+    values: [4, 4, 5, 5],
+    effectiveSample: 4,
+  });
+
+  assert.ok(result);
+  assert.equal(result.line, 4.5);
+  assert.equal(result.overProbability, 50);
+  assert.equal(result.underProbability, 50);
+  assert.equal(result.overFairOdds, 2);
+  assert.equal(result.underFairOdds, 2);
+  assert.equal(result.balanceGap, 0);
+});
+
+test("przy remisie wybiera linię bliższą środkowi, a potem niższą", () => {
+  const result = recommendBalancedHalfLine({
+    values: [2, 3, 4, 5, 6],
+    effectiveSample: 5,
+  });
+
+  assert.ok(result);
+  assert.equal(result.line, 3.5);
+});
+
+test("nie proponuje linii bez danych lub próby", () => {
+  assert.equal(
+    recommendBalancedHalfLine({ values: [], effectiveSample: 10 }),
+    null,
+  );
+  assert.equal(
+    recommendBalancedHalfLine({ values: [4, 5], effectiveSample: 0 }),
+    null,
+  );
 });
