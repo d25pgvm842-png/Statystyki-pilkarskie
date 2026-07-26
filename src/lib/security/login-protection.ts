@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { getRuntimeEnv } from "@/lib/env";
+import { lockLoginProtectionTarget } from "@/lib/security/login-protection-lock";
 import {
   activeLoginBlockUntil,
   loginRetryAfterSeconds,
@@ -69,7 +70,7 @@ export async function registerLoginFailure(input: {
 
   return prisma.$transaction(async (tx) => {
     for (const target of identity.targets) {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${target.key}, 0))`;
+      await lockLoginProtectionTarget(tx, target.key);
     }
 
     const currentStates = await tx.loginThrottle.findMany({
@@ -134,7 +135,7 @@ export async function registerLoginSuccess(input: {
 
   await prisma.$transaction(async (tx) => {
     for (const target of identity.targets) {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${target.key}, 0))`;
+      await lockLoginProtectionTarget(tx, target.key);
     }
 
     await tx.loginThrottle.deleteMany({
