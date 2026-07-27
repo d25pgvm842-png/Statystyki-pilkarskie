@@ -51,6 +51,7 @@ const navigationGroups: NavigationGroup[] = [
     collapsible: true,
     items: [
       { href: "/automation", label: "Automatyzacja", icon: "automation", adminOnly: true },
+      { href: "/historical-data", label: "Historia API", icon: "history", adminOnly: true },
       { href: "/data-management", label: "Dane i kopie", icon: "dataManagement", adminOnly: true },
       { href: "/settings", label: "Konfiguracja", icon: "settings", adminOnly: true },
     ],
@@ -63,6 +64,7 @@ const explicitPageTitles: Array<[string, string]> = [
   ["/automation/current-data", "Aktualne dane"],
   ["/automation/public-data", "Dane publiczne"],
   ["/automation/team-duplicates", "Duplikaty drużyn"],
+  ["/historical-data", "Historyczne zasilanie API"],
 ];
 
 export function navigationGroupsForRole(role: string) {

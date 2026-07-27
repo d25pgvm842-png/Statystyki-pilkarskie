@@ -107,6 +107,15 @@ enum CurrentDataSyncRunStatus {
   READY
   FAILED
 }
+
+enum HistoricalBackfillStatus {
+  READY
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -126,6 +135,7 @@ model User {
   strategyHealthEvents StrategyHealthEvent[]
   dailyPlayPlans DailyPlayPlan[]
   dailyPlayPlanEvents DailyPlayPlanEvent[]
+  historicalBackfillJobs HistoricalBackfillJob[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -154,6 +164,7 @@ model Season {
   matches          Match[]
   refereeSeasons   RefereeSeason[]
   currentDataSyncRuns CurrentDataSyncRun[]
+  historicalBackfillJobs HistoricalBackfillJob[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -698,6 +709,45 @@ model LoginSecurityEvent {
   @@index([outcome, createdAt])
   @@index([emailHash, createdAt])
   @@index([ipHash, createdAt])
+}
+
+model HistoricalBackfillJob {
+  id                String                   @id @default(cuid())
+  seasonId          String
+  createdById       String
+  providerCode      String
+  providerLeagueId  Int
+  providerSeason    Int
+  status            HistoricalBackfillStatus @default(READY)
+  fixtureIds        Json
+  cursor            Int                      @default(0)
+  fixturesTotal     Int                      @default(0)
+  fixturesProcessed Int                      @default(0)
+  activeBatchId     String?
+  activeBatchSize   Int                      @default(0)
+  requestsUsed      Int                      @default(0)
+  importedRows      Int                      @default(0)
+  duplicateRows     Int                      @default(0)
+  invalidRows       Int                      @default(0)
+  cornersCovered    Int                      @default(0)
+  cardsCovered      Int                      @default(0)
+  shotsCovered      Int                      @default(0)
+  foulsCovered      Int                      @default(0)
+  offsidesCovered   Int                      @default(0)
+  lastError         String?
+  lockToken         String?
+  lockedUntil       DateTime?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  season            Season                   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  createdBy         User                     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@unique([providerCode, providerLeagueId, providerSeason])
+  @@index([status, updatedAt])
+  @@index([seasonId, createdAt])
+  @@index([createdById, createdAt])
 }
 
 model CurrentDataSyncRun {
