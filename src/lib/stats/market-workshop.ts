@@ -12,7 +12,7 @@ import {
   type TrendStatKey,
 } from "@/lib/stats/trends";
 
-export const MARKET_WORKSHOP_MODEL_VERSION = "market-workshop-v1.0";
+export const MARKET_WORKSHOP_MODEL_VERSION = "market-workshop-v1.1";
 
 export type MarketWorkshopTarget = "MATCH_TOTAL" | "HOME_TEAM" | "AWAY_TEAM";
 export type MarketWorkshopSide = "OVER" | "UNDER";
@@ -23,6 +23,16 @@ export type MarketWorkshopStatus =
   | "NO_EDGE"
   | "WATCH"
   | "POTENTIAL_VALUE";
+
+export type MarketLineRecommendation = {
+  line: number;
+  overProbability: number;
+  underProbability: number;
+  overFairOdds: number;
+  underFairOdds: number;
+  balanceGap: number;
+  distributionSize: number;
+};
 
 export type MarketWorkshopSideResult = {
   side: MarketWorkshopSide;
@@ -51,6 +61,7 @@ export type MarketWorkshopResult = {
   coverage: number;
   confidence: MarketWorkshopConfidence;
   distributionSize: number;
+  lineRecommendation: MarketLineRecommendation | null;
   overCount: number;
   underCount: number;
   bookmakerMargin: number | null;
@@ -229,6 +240,81 @@ function shifted(values: number[], targetAverage: number | null) {
   return values.map((value) => Math.max(0, value + delta));
 }
 
+export function recommendBalancedHalfLine(input: {
+  values: readonly number[];
+  effectiveSample: number;
+}): MarketLineRecommendation | null {
+  const values = input.values.filter(
+    (value) => Number.isFinite(value) && value >= 0,
+  );
+  const effectiveSample = Math.max(0, Math.trunc(input.effectiveSample));
+  if (!values.length || effectiveSample <= 0) return null;
+
+  const center = average(values);
+  if (center === null) return null;
+
+  const minimum = Math.max(0, Math.floor(Math.min(...values)) - 1);
+  const maximum = Math.min(499, Math.ceil(Math.max(...values)) + 1);
+  let best: (MarketLineRecommendation & { centerDistance: number }) | null = null;
+
+  for (let integer = minimum; integer <= maximum; integer += 1) {
+    const line = integer + 0.5;
+    const overCount = values.filter((value) => value > line).length;
+    const underCount = values.filter((value) => value < line).length;
+    const distributionSize = overCount + underCount;
+    if (!distributionSize) continue;
+
+    const overProbability = betaSmoothedProbability({
+      rawRate: overCount / distributionSize,
+      effectiveSample,
+    });
+    if (overProbability === null) continue;
+
+    const underProbability = 100 - overProbability;
+    const overFairOdds = fairOdds(overProbability);
+    const underFairOdds = fairOdds(underProbability);
+    if (overFairOdds === null || underFairOdds === null) continue;
+
+    const candidate = {
+      line,
+      overProbability,
+      underProbability,
+      overFairOdds,
+      underFairOdds,
+      balanceGap: Math.abs(overProbability - 50),
+      distributionSize,
+      centerDistance: Math.abs(line - center),
+    };
+
+    if (
+      !best
+      || candidate.balanceGap < best.balanceGap - 1e-9
+      || (
+        Math.abs(candidate.balanceGap - best.balanceGap) < 1e-9
+        && candidate.centerDistance < best.centerDistance - 1e-9
+      )
+      || (
+        Math.abs(candidate.balanceGap - best.balanceGap) < 1e-9
+        && Math.abs(candidate.centerDistance - best.centerDistance) < 1e-9
+        && candidate.line < best.line
+      )
+    ) {
+      best = candidate;
+    }
+  }
+
+  if (!best) return null;
+  return {
+    line: best.line,
+    overProbability: best.overProbability,
+    underProbability: best.underProbability,
+    overFairOdds: best.overFairOdds,
+    underFairOdds: best.underFairOdds,
+    balanceGap: best.balanceGap,
+    distributionSize: best.distributionSize,
+  };
+}
+
 function teamDistribution(input: {
   teams: RatingTeam[];
   matches: RatingMatch[];
@@ -394,6 +480,10 @@ export function buildMarketWorkshop(input: {
   const underProbability = overProbability === null ? null : 100 - overProbability;
   const market = removeMarketMargin(input.overOdds, input.underOdds);
   const confidence = confidenceFor(effectiveSample, coverage);
+  const lineRecommendation = recommendBalancedHalfLine({
+    values,
+    effectiveSample,
+  });
 
   const side = (
     sideName: MarketWorkshopSide,
@@ -442,6 +532,7 @@ export function buildMarketWorkshop(input: {
     coverage,
     confidence,
     distributionSize: classified,
+    lineRecommendation,
     overCount,
     underCount,
     bookmakerMargin: market.margin,
