@@ -34,7 +34,8 @@ import { repairableHistoricalErrors, repairedHistoricalCounters } from "@/lib/hi
 import { commitExternalImportRow } from "@/lib/imports/external-commit";
 import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
 
-const LOCK_TTL_MS = 3 * 60 * 1000;
+const LOCK_TTL_MS = 60 * 1000;
+const HISTORICAL_REPAIR_ROWS_PER_STEP = 1;
 
 export class HistoricalBackfillBusyError extends Error {
   constructor() {
@@ -451,7 +452,9 @@ async function repairStoredAmbiguities(input: {
     orderBy: [{ import: { createdAt: "asc" } }, { rowNumber: "asc" }],
     take: 100,
   });
-  const repairable = rows.filter((row) => repairableHistoricalErrors(row.errors));
+  const repairable = rows
+    .filter((row) => repairableHistoricalErrors(row.errors))
+    .slice(0, HISTORICAL_REPAIR_ROWS_PER_STEP);
   if (!repairable.length) return null;
 
   const touchedBatches = new Set<string>();

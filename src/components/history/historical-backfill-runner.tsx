@@ -84,6 +84,7 @@ export function HistoricalBackfillRunner({
   );
   const [planning, setPlanning] = useState(false);
   const [running, setRunning] = useState(false);
+  const [runningJobId, setRunningJobId] = useState<string | null>(null);
   const [sessionBudget, setSessionBudget] = useState(80);
   const [sessionRequests, setSessionRequests] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
@@ -217,6 +218,7 @@ export function HistoricalBackfillRunner({
   async function runOne(job: Job) {
     if (running || planning || job.status === "COMPLETED") return;
     stopRequested.current = false;
+    setRunningJobId(job.id);
     setRunning(true);
     setMessage(null);
     try {
@@ -226,6 +228,7 @@ export function HistoricalBackfillRunner({
         error instanceof Error ? error.message : "Nieznany błąd backfillu.",
       );
     } finally {
+      setRunningJobId(null);
       setRunning(false);
     }
   }
@@ -458,12 +461,18 @@ export function HistoricalBackfillRunner({
                       }
                       className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
                     >
-                      {job.status === "PAUSED" || job.status === "FAILED"
-                        ? <RefreshCcw size={14} className="mr-1" />
+                      {runningJobId === job.id
+                        ? <LoaderCircle size={14} className="mr-1 animate-spin" />
+                        : job.status === "PAUSED" || job.status === "FAILED"
+                          ? <RefreshCcw size={14} className="mr-1" />
+                          : job.status === "COMPLETED"
+                            ? <CheckCircle2 size={14} className="mr-1" />
+                            : <Play size={14} className="mr-1" />}
+                      {runningJobId === job.id
+                        ? "Przetwarzanie..."
                         : job.status === "COMPLETED"
-                          ? <CheckCircle2 size={14} className="mr-1" />
-                          : <Play size={14} className="mr-1" />}
-                      {job.status === "COMPLETED" ? "Gotowe" : "Uruchom / wznów"}
+                          ? "Gotowe"
+                          : "Uruchom / wznów"}
                     </button>
                     </div>
                   </td>
