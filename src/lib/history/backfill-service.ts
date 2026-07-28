@@ -30,6 +30,7 @@ import {
   percentage,
   type HistoricalDetailMode,
 } from "@/lib/history/backfill-policy";
+import { repairableHistoricalErrors, repairedHistoricalCounters } from "@/lib/history/backfill-repair-policy";
 import { commitExternalImportRow } from "@/lib/imports/external-commit";
 import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
 
@@ -421,6 +422,70 @@ async function processActiveBatch(input: {
   };
 }
 
+async function syncRepairedBatch(batchId: string) {
+  const counts = await batchCounts(batchId);
+  const completed = counts.VALID === 0;
+  const completedRows = counts.IMPORTED + counts.DUPLICATE + counts.SKIPPED;
+  await prisma.importBatch.update({
+    where: { id: batchId },
+    data: {
+      rowsValid: counts.VALID + counts.IMPORTED,
+      rowsInvalid: counts.INVALID,
+      rowsDuplicate: counts.DUPLICATE,
+      status: completed ? (completedRows > 0 ? ImportStatus.COMPLETED : ImportStatus.FAILED) : ImportStatus.VALIDATING,
+      completedAt: completed ? new Date() : null,
+    },
+  });
+}
+
+async function repairStoredAmbiguities(input: {
+  job: NonNullable<Awaited<ReturnType<typeof loadJob>>>;
+  userId: string;
+}) {
+  const rows = await prisma.importRow.findMany({
+    where: {
+      status: ImportRowStatus.INVALID,
+      import: { createdById: input.job.createdById, fileName: { endsWith: input.job.id } },
+    },
+    include: { import: { select: { id: true, fileName: true } } },
+    orderBy: [{ import: { createdAt: "asc" } }, { rowNumber: "asc" }],
+    take: 100,
+  });
+  const repairable = rows.filter((row) => repairableHistoricalErrors(row.errors));
+  if (!repairable.length) return null;
+
+  const touchedBatches = new Set<string>();
+  let imported = 0;
+  let duplicates = 0;
+  let stillInvalid = 0;
+
+  for (const row of repairable) {
+    touchedBatches.add(row.import.id);
+    await prisma.importRow.update({ where: { id: row.id }, data: { status: ImportRowStatus.VALID, errors: Prisma.DbNull } });
+    try {
+      const result = await commitExternalImportRow({ rowId: row.id, batchId: row.import.id, userId: input.userId, fileName: row.import.fileName });
+      if (result.status === "IMPORTED") imported += 1;
+      else if (result.status === "DUPLICATE") duplicates += 1;
+    } catch (error) {
+      stillInvalid += 1;
+      await prisma.importRow.update({
+        where: { id: row.id },
+        data: { status: ImportRowStatus.INVALID, errors: [error instanceof Error ? error.message : "Nie udało się ponownie przetworzyć wiersza."] as unknown as Prisma.InputJsonValue },
+      });
+    }
+  }
+
+  for (const batchId of touchedBatches) await syncRepairedBatch(batchId);
+  const counters = repairedHistoricalCounters({
+    importedRows: input.job.importedRows, duplicateRows: input.job.duplicateRows, invalidRows: input.job.invalidRows, imported, duplicates,
+  });
+  return prisma.historicalBackfillJob.update({
+    where: { id: input.job.id },
+    data: { ...counters, lastError: stillInvalid ? String(stillInvalid) + " wierszy nadal wymaga scalenia duplikatów drużyn." : null },
+    include: { season: { include: { league: true } } },
+  });
+}
+
 function batchName(input: {
   jobId: string;
   leagueName: string;
@@ -445,6 +510,9 @@ export async function processHistoricalBackfillStep(input: {
   try {
     const job = await loadJob(input.jobId);
     if (!job) throw new Error("Nie znaleziono zadania historycznego.");
+
+    const repaired = await repairStoredAmbiguities({ job, userId: input.userId });
+    if (repaired) return jobSummary(repaired);
 
     if (job.activeBatchId) {
       const result = await processActiveBatch({

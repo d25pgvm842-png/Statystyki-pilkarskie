@@ -207,5 +207,6 @@ export async function mergeDuplicateTeamAction(formData: FormData) {
   revalidatePath("/matches");
   revalidatePath("/automation");
   revalidatePath("/automation/team-duplicates");
+  revalidatePath("/historical-data");
   redirect(resultHref(seasonId, "merged"));
 }

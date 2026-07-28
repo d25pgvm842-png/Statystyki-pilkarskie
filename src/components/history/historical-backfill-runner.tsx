@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import {
   historicalRequestDelay,
@@ -437,8 +438,17 @@ export function HistoricalBackfillRunner({
                         : "Pakiet · do 20"}
                     </div>
                   </td>
-                  <td className="p-3 text-right">
-                    <button
+                  <td className="p-3">
+                    <div className="flex min-w-40 flex-col gap-2">
+                      {job.invalidRows > 0 ? (
+                        <Link
+                          href={"/automation/team-duplicates?seasonId=" + job.seasonId}
+                          className="inline-flex items-center justify-center rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                        >
+                          Scal duplikaty
+                        </Link>
+                      ) : null}
+                      <button
                       type="button"
                       onClick={() => runOne(job)}
                       disabled={
@@ -455,6 +465,7 @@ export function HistoricalBackfillRunner({
                           : <Play size={14} className="mr-1" />}
                       {job.status === "COMPLETED" ? "Gotowe" : "Uruchom / wznów"}
                     </button>
+                    </div>
                   </td>
                 </tr>
               ))}
