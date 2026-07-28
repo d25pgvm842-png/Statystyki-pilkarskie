@@ -484,7 +484,15 @@ async function repairStoredAmbiguities(input: {
   });
   return prisma.historicalBackfillJob.update({
     where: { id: input.job.id },
-    data: { ...counters, lastError: stillInvalid ? String(stillInvalid) + " wierszy nadal wymaga scalenia duplikatów drużyn." : null },
+    data: {
+      ...counters,
+      status: stillInvalid
+        ? HistoricalBackfillStatus.PAUSED
+        : input.job.status,
+      lastError: stillInvalid
+        ? "Wiersz wymaga ręcznego przypisania ID API do właściwej drużyny."
+        : null,
+    },
     include: { season: { include: { league: true } } },
   });
 }

@@ -5,8 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
-import { mergeDuplicateTeamAction } from "@/lib/actions/team-duplicate-actions";
+import {
+  mergeDuplicateTeamAction,
+  resolveExternalTeamMappingAction,
+} from "@/lib/actions/team-duplicate-actions";
+import { ImportRowStatus } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth";
+import { historicalTeamAmbiguities } from "@/lib/history/backfill-mapping-policy";
 import { canAdminister } from "@/lib/permissions";
 import { prisma } from "@/lib/db";
 import {
@@ -22,6 +27,7 @@ const errorMessages: Record<string, string> = {
   "error-league": "Drużyny nie należą do tej samej ligi.",
   "error-opponents": "Drużyny występują przeciwko sobie w jednym meczu. Automatyczne scalenie jest niedozwolone.",
   "error-unknown": "Nie udało się bezpiecznie scalić drużyn. Żadnych danych nie zmieniono.",
+  "error-external-map": "Nie udało się zapisać mapowania API. Kandydat mógł już nie istnieć albo nie należy do tej ligi.",
 };
 
 export default async function TeamDuplicatesPage({
@@ -70,6 +76,68 @@ export default async function TeamDuplicatesPage({
     ? teams.filter((team) => team.seasonMemberships.some((item) => item.seasonId === selected.id))
     : [];
 
+  const invalidRows = selected
+    ? await prisma.importRow.findMany({
+        where: {
+          status: ImportRowStatus.INVALID,
+          import: {
+            fileName: { startsWith: "Historyczny backfill API-Football" },
+          },
+        },
+        select: {
+          id: true,
+          rawData: true,
+          import: {
+            select: {
+              fileName: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: {
+          import: { createdAt: "asc" },
+        },
+        take: 200,
+      })
+    : [];
+
+  const teamById = new Map(teams.map((team) => [team.id, team]));
+  const unresolvedByExternal = new Map<string, {
+    rowId: string;
+    side: "home" | "away";
+    provider: string;
+    externalId: string;
+    externalName: string;
+    candidates: Array<{ id: string; name: string; score: number }>;
+  }>();
+
+  for (const row of invalidRows) {
+    for (const ambiguity of historicalTeamAmbiguities(row.rawData)) {
+      if (ambiguity.seasonId !== selected?.id) continue;
+
+      const candidates = ambiguity.candidates
+        .filter((candidate) => teamById.has(candidate.id))
+        .map((candidate) => ({
+          ...candidate,
+          name: teamById.get(candidate.id)?.name ?? candidate.name,
+        }));
+      if (!candidates.length) continue;
+
+      const key = `${ambiguity.provider}:${ambiguity.externalId}`;
+      if (!unresolvedByExternal.has(key)) {
+        unresolvedByExternal.set(key, {
+          rowId: row.id,
+          side: ambiguity.side,
+          provider: ambiguity.provider,
+          externalId: ambiguity.externalId,
+          externalName: ambiguity.externalName,
+          candidates,
+        });
+      }
+    }
+  }
+  const unresolvedMappings = [...unresolvedByExternal.values()];
+
   const suggestions = currentTeams.flatMap((source) => {
     const sourceHistory = source.seasonMemberships.filter(
       (item) => selected && item.season.startsAt < selected.startsAt,
@@ -111,6 +179,11 @@ export default async function TeamDuplicatesPage({
         </div>
       </div>
 
+      {params.mapped === "1" ? (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+          <CheckCircle2 size={18} />Mapowanie ID API zostało zapisane. Wróć do Historii API i wznów zadanie.
+        </div>
+      ) : null}
       {params.merged === "1" ? (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
           <CheckCircle2 size={18} />Drużyny zostały scalone, a powiązania przeniesione w jednej transakcji.
@@ -148,6 +221,60 @@ export default async function TeamDuplicatesPage({
           </div>
         </CardContent>
       </Card>
+
+      {unresolvedMappings.length ? (
+        <Card className="border-blue-300 dark:border-blue-900">
+          <CardHeader>
+            <CardTitle>Nierozstrzygnięte mapowania API</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <p className="text-sm text-zinc-500">
+              To nie muszą być duplikaty. Wskaż, do którego istniejącego klubu należy identyfikator z API-Football.
+            </p>
+            {unresolvedMappings.map((mapping) => (
+              <form
+                key={`${mapping.provider}:${mapping.externalId}`}
+                action={resolveExternalTeamMappingAction}
+                className="grid gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+              >
+                <input type="hidden" name="seasonId" value={selected?.id ?? ""} />
+                <input type="hidden" name="importRowId" value={mapping.rowId} />
+                <input type="hidden" name="side" value={mapping.side} />
+                <div>
+                  <div className="text-xs uppercase text-zinc-500">
+                    {mapping.provider} · ID {mapping.externalId}
+                  </div>
+                  <div className="font-medium">{mapping.externalName}</div>
+                </div>
+                <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                  <Select name="targetTeamId" defaultValue={mapping.candidates[0]?.id ?? ""}>
+                    {mapping.candidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name} · zgodność {candidate.score}%
+                      </option>
+                    ))}
+                  </Select>
+                  <Button type="submit">
+                    <Link2 size={16} className="mr-2" />Przypisz ID API
+                  </Button>
+                </div>
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    name="confirmed"
+                    value="yes"
+                    required
+                    className="mt-1"
+                  />
+                  <span>
+                    Potwierdzam, że <strong>{mapping.externalName}</strong> z API oznacza wybraną drużynę.
+                  </span>
+                </label>
+              </form>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4">
         {suggestions.map(({ source, sourceHistory, candidates }) => (
@@ -192,7 +319,7 @@ export default async function TeamDuplicatesPage({
           </Card>
         ))}
 
-        {!suggestions.length ? (
+        {!suggestions.length && !unresolvedMappings.length ? (
           <Card className="p-8 text-center">
             <CheckCircle2 className="mx-auto mb-3 text-emerald-600" />
             <div className="font-medium">Nie znaleziono oczywistych duplikatów w wybranym sezonie.</div>

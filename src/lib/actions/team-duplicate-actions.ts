@@ -6,6 +6,12 @@ import { AuditEntityType, ExternalEntityType } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { replaceExternalMapping } from "@/lib/external-mappings";
+import {
+  historicalTeamAmbiguities,
+  isAllowedHistoricalMappingTarget,
+  type HistoricalMappingSide,
+} from "@/lib/history/backfill-mapping-policy";
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -33,6 +39,127 @@ function matchKey(input: {
   kickoffAt: Date;
 }) {
   return `${input.seasonId}:${input.homeTeamId}:${input.awayTeamId}:${input.kickoffAt.toISOString()}`;
+}
+
+export async function resolveExternalTeamMappingAction(formData: FormData) {
+  const user = await requireAdminUser();
+
+  const seasonId = text(formData, "seasonId");
+  const importRowId = text(formData, "importRowId");
+  const targetTeamId = text(formData, "targetTeamId");
+  const sideValue = text(formData, "side");
+  const side: HistoricalMappingSide | null =
+    sideValue === "home" || sideValue === "away" ? sideValue : null;
+  const confirmed = text(formData, "confirmed") === "yes";
+
+  if (!seasonId || !importRowId || !targetTeamId || !side) {
+    redirect(resultHref(seasonId, "error-external-map"));
+  }
+  if (!confirmed) redirect(resultHref(seasonId, "error-confirm"));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const [row, season, target] = await Promise.all([
+        tx.importRow.findUnique({
+          where: { id: importRowId },
+          select: { id: true, rawData: true },
+        }),
+        tx.season.findUnique({
+          where: { id: seasonId },
+          select: { id: true, leagueId: true },
+        }),
+        tx.team.findUnique({
+          where: { id: targetTeamId },
+          select: {
+            id: true,
+            name: true,
+            seasonMemberships: {
+              select: {
+                season: { select: { leagueId: true } },
+              },
+            },
+          },
+        }),
+      ]);
+
+      if (!row || !season || !target) {
+        throw new Error("EXTERNAL_MAPPING_NOT_FOUND");
+      }
+
+      const ambiguity = historicalTeamAmbiguities(row.rawData)
+        .find((item) =>
+          item.side === side
+          && item.seasonId === season.id
+          && isAllowedHistoricalMappingTarget(item, target.id)
+        );
+      if (!ambiguity) throw new Error("EXTERNAL_MAPPING_INVALID_CANDIDATE");
+
+      const belongsToLeague = target.seasonMemberships.some(
+        (membership) => membership.season.leagueId === season.leagueId,
+      );
+      if (!belongsToLeague) {
+        throw new Error("EXTERNAL_MAPPING_DIFFERENT_LEAGUE");
+      }
+
+      await advisoryLock(
+        tx,
+        `external-team-map:${ambiguity.provider}:${ambiguity.externalId}`,
+      );
+      await replaceExternalMapping({
+        providerCode: ambiguity.provider,
+        entityType: "TEAM",
+        internalId: target.id,
+        externalId: ambiguity.externalId,
+        externalName: ambiguity.externalName,
+        metadata: {
+          shortName: ambiguity.shortName,
+          country: ambiguity.country,
+          resolvedFromImportRowId: row.id,
+          resolvedByUserId: user.id,
+        },
+        active: true,
+      }, tx);
+
+      await tx.auditLog.create({
+        data: {
+          entityType: AuditEntityType.TEAM,
+          entityId: target.id,
+          action: "RESOLVE_EXTERNAL_TEAM_MAPPING",
+          userId: user.id,
+          changes: {
+            create: [
+              {
+                fieldName: "providerCode",
+                oldValue: null,
+                newValue: ambiguity.provider,
+              },
+              {
+                fieldName: "externalId",
+                oldValue: null,
+                newValue: ambiguity.externalId,
+              },
+              {
+                fieldName: "externalName",
+                oldValue: null,
+                newValue: ambiguity.externalName,
+              },
+              {
+                fieldName: "targetTeamName",
+                oldValue: null,
+                newValue: target.name,
+              },
+            ],
+          },
+        },
+      });
+    }, { maxWait: 10_000, timeout: 30_000 });
+  } catch {
+    redirect(resultHref(seasonId, "error-external-map"));
+  }
+
+  revalidatePath("/automation/team-duplicates");
+  revalidatePath("/historical-data");
+  redirect(resultHref(seasonId, "mapped"));
 }
 
 export async function mergeDuplicateTeamAction(formData: FormData) {

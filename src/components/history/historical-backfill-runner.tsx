@@ -448,7 +448,7 @@ export function HistoricalBackfillRunner({
                           href={"/automation/team-duplicates?seasonId=" + job.seasonId}
                           className="inline-flex items-center justify-center rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
                         >
-                          Scal duplikaty
+                          Rozwiąż mapowanie
                         </Link>
                       ) : null}
                       <button
