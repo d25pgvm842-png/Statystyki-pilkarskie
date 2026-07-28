@@ -2,6 +2,10 @@
 
 import { useMemo, useRef, useState } from "react";
 import {
+  historicalRequestDelay,
+  type HistoricalDetailMode,
+} from "@/lib/history/backfill-policy";
+import {
   CheckCircle2,
   CirclePause,
   CloudDownload,
@@ -35,6 +39,7 @@ type Job = {
   status: "READY" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED";
   fixturesTotal: number;
   fixturesProcessed: number;
+  detailMode: HistoricalDetailMode;
   requestsUsed: number;
   importedRows: number;
   duplicateRows: number;
@@ -199,7 +204,12 @@ export function HistoricalBackfillRunner({
       const result = await stepJob(current);
       current = result.job;
       if (current.status === "PAUSED" || current.status === "FAILED") break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          historicalRequestDelay(current.detailMode, result.apiRequests),
+        )
+      );
     }
   }
 
@@ -419,7 +429,14 @@ export function HistoricalBackfillRunner({
                   <td className="p-3">{job.coverage.shots}%</td>
                   <td className="p-3">{job.coverage.fouls}%</td>
                   <td className="p-3">{job.coverage.offsides}%</td>
-                  <td className="p-3">{job.requestsUsed}</td>
+                  <td className="p-3">
+                    <div>{job.requestsUsed}</div>
+                    <div className="text-xs text-zinc-500">
+                      {job.detailMode === "SINGLE_ID"
+                        ? "Free · 1 mecz"
+                        : "Pakiet · do 20"}
+                    </div>
+                  </td>
                   <td className="p-3 text-right">
                     <button
                       type="button"

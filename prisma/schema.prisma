@@ -718,6 +718,7 @@ model HistoricalBackfillJob {
   providerCode      String
   providerLeagueId  Int
   providerSeason    Int
+  detailMode        String                   @default("BATCH_IDS")
   status            HistoricalBackfillStatus @default(READY)
   fixtureIds        Json
   cursor            Int                      @default(0)

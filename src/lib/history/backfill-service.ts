@@ -22,11 +22,13 @@ import {
 import { prisma } from "@/lib/db";
 import {
   HISTORICAL_COMMIT_CHUNK_SIZE,
+  batchIdsUnavailable,
   finishedFixtureIds,
   historicalCoverage,
+  historicalDetailSelection,
   historicalSeasonName,
-  nextFixtureChunk,
   percentage,
+  type HistoricalDetailMode,
 } from "@/lib/history/backfill-policy";
 import { commitExternalImportRow } from "@/lib/imports/external-commit";
 import { prepareExternalImportBatch } from "@/lib/imports/external-preview";
@@ -59,6 +61,7 @@ function jobSummary(job: {
   fixturesTotal: number;
   fixturesProcessed: number;
   activeBatchSize: number;
+  detailMode: string;
   requestsUsed: number;
   importedRows: number;
   duplicateRows: number;
@@ -90,6 +93,7 @@ function jobSummary(job: {
     status: job.status,
     fixturesTotal: job.fixturesTotal,
     fixturesProcessed: job.fixturesProcessed,
+    detailMode: job.detailMode === "SINGLE_ID" ? "SINGLE_ID" : "BATCH_IDS",
     requestsUsed: job.requestsUsed,
     importedRows: job.importedRows,
     duplicateRows: job.duplicateRows,
@@ -103,6 +107,79 @@ function jobSummary(job: {
       offsides: percentage(job.offsidesCovered, total),
     },
   };
+}
+
+async function trackedFixtureRequest(
+  jobId: string,
+  params: { id?: number; ids?: string },
+) {
+  await prisma.historicalBackfillJob.update({
+    where: { id: jobId },
+    data: { requestsUsed: { increment: 1 } },
+  });
+  return apiFootballGet<ApiFootballFixture[]>("/fixtures", params);
+}
+
+async function fetchHistoricalDetails(input: {
+  jobId: string;
+  fixtureIds: readonly number[];
+  cursor: number;
+  detailMode: string;
+}) {
+  const initialMode: HistoricalDetailMode =
+    input.detailMode === "SINGLE_ID" ? "SINGLE_ID" : "BATCH_IDS";
+  let selectedIds = historicalDetailSelection(
+    input.fixtureIds,
+    input.cursor,
+    initialMode,
+  );
+
+  if (initialMode === "SINGLE_ID") {
+    const detailed = await trackedFixtureRequest(input.jobId, {
+      id: selectedIds[0],
+    });
+    return {
+      selectedIds,
+      detailed,
+      detailMode: "SINGLE_ID" as const,
+    };
+  }
+
+  try {
+    const detailed = await trackedFixtureRequest(input.jobId, {
+      ids: selectedIds.join("-"),
+    });
+    return {
+      selectedIds,
+      detailed,
+      detailMode: "BATCH_IDS" as const,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!batchIdsUnavailable(message)) throw error;
+
+    await prisma.historicalBackfillJob.update({
+      where: { id: input.jobId },
+      data: {
+        detailMode: "SINGLE_ID",
+        lastError: null,
+      },
+    });
+
+    selectedIds = historicalDetailSelection(
+      input.fixtureIds,
+      input.cursor,
+      "SINGLE_ID",
+    );
+    const detailed = await trackedFixtureRequest(input.jobId, {
+      id: selectedIds[0],
+    });
+    return {
+      selectedIds,
+      detailed,
+      detailMode: "SINGLE_ID" as const,
+    };
+  }
 }
 
 async function loadJob(jobId: string) {
@@ -420,10 +497,13 @@ export async function processHistoricalBackfillStep(input: {
       return jobSummary(completed);
     }
 
-    const selectedIds = nextFixtureChunk(ids, job.cursor);
-    const detailed = await apiFootballGet<ApiFootballFixture[]>("/fixtures", {
-      ids: selectedIds.join("-"),
+    const detailResult = await fetchHistoricalDetails({
+      jobId: job.id,
+      fixtureIds: ids,
+      cursor: job.cursor,
+      detailMode: job.detailMode,
     });
+    const { selectedIds, detailed } = detailResult;
     const byId = new Map(
       detailed.map((fixture) => [fixture.fixture.id, fixture]),
     );
@@ -482,7 +562,7 @@ export async function processHistoricalBackfillStep(input: {
       data: {
         activeBatchId: batchId,
         activeBatchSize: selectedIds.length,
-        requestsUsed: { increment: 1 },
+        detailMode: detailResult.detailMode,
         cornersCovered: { increment: coverage.corners },
         cardsCovered: { increment: coverage.cards },
         shotsCovered: { increment: coverage.shots },

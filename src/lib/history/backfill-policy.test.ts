@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  batchIdsUnavailable,
   finishedFixtureIds,
   historicalCoverage,
+  historicalDetailSelection,
+  historicalRequestDelay,
   historicalSeasonName,
   nextFixtureChunk,
   percentage,
@@ -72,4 +75,32 @@ test("pokrycie wymaga kompletu gospodarza i gościa", () => {
     offsides: 0,
   });
   assert.equal(percentage(1, 2), 50);
+});
+
+
+test("rozpoznaje blokadę parametru ids na planie Free", () => {
+  assert.equal(
+    batchIdsUnavailable("Free plans do not have access to the Ids parameter."),
+    true,
+  );
+  assert.equal(batchIdsUnavailable("Rate limit exceeded"), false);
+});
+
+test("tryb Free wybiera jeden fixture, a płatny maksymalnie dwadzieścia", () => {
+  const ids = Array.from({ length: 30 }, (_, index) => index + 1);
+
+  assert.deepEqual(
+    historicalDetailSelection(ids, 4, "SINGLE_ID"),
+    [5],
+  );
+  assert.equal(
+    historicalDetailSelection(ids, 4, "BATCH_IDS").length,
+    20,
+  );
+});
+
+test("tryb Free zachowuje limit dziesięciu zapytań na minutę", () => {
+  assert.equal(historicalRequestDelay("SINGLE_ID", 1), 6500);
+  assert.equal(historicalRequestDelay("SINGLE_ID", 0), 250);
+  assert.equal(historicalRequestDelay("BATCH_IDS", 1), 250);
 });

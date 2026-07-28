@@ -1,0 +1,2 @@
+ALTER TABLE "HistoricalBackfillJob"
+ADD COLUMN "detailMode" TEXT NOT NULL DEFAULT 'BATCH_IDS';

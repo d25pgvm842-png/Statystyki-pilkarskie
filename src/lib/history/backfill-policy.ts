@@ -4,6 +4,30 @@ export const HISTORICAL_DEFAULT_SEASONS = [2023, 2024, 2025] as const;
 export const HISTORICAL_API_BATCH_SIZE = 20;
 export const HISTORICAL_COMMIT_CHUNK_SIZE = 5;
 
+export type HistoricalDetailMode = "BATCH_IDS" | "SINGLE_ID";
+
+export function batchIdsUnavailable(message: string) {
+  return /free plans? do not have access to the ids parameter/i.test(message)
+    || /ids parameter.*(?:free|not available|not accessible)/i.test(message);
+}
+
+export function historicalDetailSelection(
+  fixtureIds: readonly number[],
+  cursor: number,
+  mode: HistoricalDetailMode,
+) {
+  return mode === "SINGLE_ID"
+    ? nextFixtureChunk(fixtureIds, cursor, 1)
+    : nextFixtureChunk(fixtureIds, cursor);
+}
+
+export function historicalRequestDelay(
+  mode: HistoricalDetailMode,
+  apiRequests: number,
+) {
+  return mode === "SINGLE_ID" && apiRequests > 0 ? 6_500 : 250;
+}
+
 export function historicalSeasonName(providerSeason: number) {
   const next = String(providerSeason + 1).slice(-2);
   return `${providerSeason}/${next}`;

@@ -53,6 +53,7 @@ export default async function HistoricalDataPage() {
       status: job.status,
       fixturesTotal: job.fixturesTotal,
       fixturesProcessed: job.fixturesProcessed,
+      detailMode: job.detailMode === "SINGLE_ID" ? "SINGLE_ID" as const : "BATCH_IDS" as const,
       requestsUsed: job.requestsUsed,
       importedRows: job.importedRows,
       duplicateRows: job.duplicateRows,
